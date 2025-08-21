@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Volt\Volt as LivewireVolt;
 use Tests\TestCase;
+use App\Livewire\Actions\Login;
 
 class AuthenticationTest extends TestCase
 {
@@ -22,14 +23,14 @@ class AuthenticationTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = LivewireVolt::test('auth.login')
+        $response = LivewireVolt::test(Login::class)
             ->set('email', $user->email)
             ->set('password', 'password')
             ->call('login');
 
         $response
             ->assertHasNoErrors()
-            ->assertRedirect(route('dashboard', absolute: false));
+            ->assertRedirect(route('calendar.admin', absolute: false));
 
         $this->assertAuthenticated();
     }
@@ -38,7 +39,7 @@ class AuthenticationTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $response = LivewireVolt::test('auth.login')
+        $response = LivewireVolt::test(Login::class)
             ->set('email', $user->email)
             ->set('password', 'wrong-password')
             ->call('login');
@@ -54,7 +55,8 @@ class AuthenticationTest extends TestCase
 
         $response = $this->actingAs($user)->post('/logout');
 
-        $response->assertRedirect('/');
+        // sebelumnya assertRedirect('/')
+        $response->assertRedirect(route('login'));
 
         $this->assertGuest();
     }
