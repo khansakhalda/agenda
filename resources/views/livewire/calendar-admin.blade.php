@@ -65,16 +65,72 @@
                     </div>
                     <button
                         class="px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50">Export</button>
-                        <a href="{{ route('settings.tasks') }}"
-                            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition">
-                            Tasks
-                        </a>
-                     <button wire:click="openCreateModal" wire:loading.attr="disabled"
-                         wire:target="openCreateModal,createEvent"
-                         class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                         <span wire:loading.remove wire:target="openCreateModal">Create Event</span>
-                         <span wire:loading wire:target="openCreateModal">Loading...</span>
-                     </button>                     
+                    <a href="{{ route('settings.tasks') }}"
+                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition">
+                        Tasks
+                    </a>
+                    <button wire:click="openCreateModal" wire:loading.attr="disabled"
+                        wire:target="openCreateModal,createEvent"
+                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span wire:loading.remove wire:target="openCreateModal">Create Event</span>
+                        <span wire:loading wire:target="openCreateModal">Loading...</span>
+                    </button>
+
+                    {{-- PROFILE (Alpine dropdown, stays open until click outside) --}}
+                    <div x-data="{ open:false }" class="relative ml-2" x-cloak wire:ignore>
+                        <!-- Trigger -->
+                        <button type="button"
+                                @click.stop="open = !open"
+                                @keydown.escape.window="open=false"
+                                class="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full bg-white border border-gray-300 shadow-sm hover:bg-gray-50">
+                            <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-white text-sm font-semibold">
+                                {{ strtoupper(auth()->user()->name[0] ?? 'U') }}
+                            </span>
+                            <span class="text-sm font-medium text-gray-800">
+                                {{ auth()->user()->name ?? 'User' }}
+                            </span>
+                            <svg class="w-4 h-4 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+                            </svg>
+                        </button>
+
+                        <!-- Dropdown -->
+                        <div x-show="open"
+                             x-transition.origin.top.right
+                             @click.outside="open=false"
+                             class="absolute right-0 mt-2 w-72 rounded-2xl bg-white shadow-lg ring-1 ring-black/5 z-50 overflow-hidden">
+
+                            <!-- Header -->
+                            <div class="flex items-center gap-3 p-4">
+                                <div class="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 font-bold">
+                                    {{ strtoupper(auth()->user()->name[0] ?? 'U') }}
+                                </div>
+                                <div class="truncate">
+                                    <div class="text-base font-semibold text-gray-900 truncate">
+                                        {{ auth()->user()->name ?? 'User' }}
+                                    </div>
+                                    <div class="text-sm text-gray-500 truncate">
+                                        {{ auth()->user()->email ?? '' }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="border-t"></div>
+
+                            <!-- Actions -->
+                            <div class="p-1">
+                                <form method="POST" action="{{ route('logout') }}">
+                                    @csrf
+                                    <button type="submit"
+                                            class="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl">
+                                        Log Out
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                    {{-- END PROFILE --}}
+
                 </div>
             </div>
 
@@ -182,7 +238,7 @@
 
                         {{-- Konten Grid Waktu --}}
                         @foreach(range(0, 23) as $hour)
-                            {{-- Kolom Jam (untuk setiap baris jam) --}}
+                            {{-- Kolom Jam --}}
                             <div class="grid-item-time bg-gray-50 border-b border-r border-gray-200">
                                 <div class="h-12 flex items-center justify-center text-xs text-gray-500">
                                     {{ Carbon::createFromTime($hour, 0)->format('H:i') }}
@@ -208,7 +264,7 @@
                                     })->sortBy('start_time');
 
                                     $countEventsInHour = $eventsInHour->count();
-                                    $displayLimit = 2; // Batasi jumlah event yang ditampilkan per slot
+                                    $displayLimit = 2;
                                 @endphp
                                 <div class="grid-item-cell h-12 border-b border-r border-gray-200 p-0.5 relative group">
                                     @foreach($eventsInHour->take($displayLimit) as $index => $event)
@@ -273,7 +329,7 @@
                             </div>
 
                             <div class="overflow-y-auto" style="max-height: 600px;">
-                                {{-- Baris utama Day View, selalu render kolom jam --}}
+                                {{-- Baris utama Day View --}}
                                 @for($hour = 0; $hour < 24; $hour++)
                                     @php
                                         $currentHourStart = Carbon::parse($this->currentDate)->copy()->setHour($hour)->startOfHour();
@@ -284,7 +340,7 @@
                                         })->sortBy('start_time');
 
                                         $countEventsInHour = $eventsInHour->count();
-                                        $displayLimit = 2; // Batasi jumlah event yang ditampilkan per slot
+                                        $displayLimit = 2;
                                     @endphp
 
                                     <div class="flex border-b border-gray-100">
@@ -347,11 +403,11 @@
                                                     class="absolute px-1 py-0.5 rounded-sm text-xs font-medium border {{ $eventClass }} overflow-hidden hover:shadow-md transition-shadow"
                                                     title="{{ $event->title }}"
                                                     style="
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    top: {{ $topOffset }}%;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    height: {{ $height }}%;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    left: {{ $dynamicLeft }}%;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                    width: {{ $dynamicWidth }}%;
-                                                                                                                                                                                                                                                                                                                                                                                                                                                ">
+                                                        top: {{ $topOffset }}%;
+                                                        height: {{ $height }}%;
+                                                        left: {{ $dynamicLeft }}%;
+                                                        width: {{ $dynamicWidth }}%;
+                                                    ">
                                                     {{ $event->start_date_time->format('H:i') }} - {{ $event->title }}
                                                 </div>
                                             @endforeach
@@ -601,43 +657,84 @@
     </div>
 @endif
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        Livewire.on('refreshCalendar', () => { initializeDragAndDrop(); });
-
-        function initializeDragAndDrop() {
-            const currentCells = document.querySelectorAll('[data-date]');
-            currentCells.forEach(cell => {
-                cell.removeEventListener('dragover', handleDragOver);
-                cell.removeEventListener('dragleave', handleDragLeave);
-                cell.removeEventListener('drop', handleDrop);
-            });
-            const currentDraggables = document.querySelectorAll('[draggable="true"]');
-            currentDraggables.forEach(event => {
-                event.removeEventListener('dragstart', handleDragStart);
-            });
-
-            currentCells.forEach(cell => {
-                cell.addEventListener('dragover', handleDragOver);
-                cell.addEventListener('dragleave', handleDragLeave);
-                cell.addEventListener('drop', handleDrop);
-            });
-            const draggableEvents = document.querySelectorAll('[draggable="true"]');
-            draggableEvents.forEach(event => {
-                event.addEventListener('dragstart', handleDragStart);
-            });
+{{-- Toast Popup (Success/Fail) --}}
+<div
+    x-data="{
+        show:false, type:'info', title:'', text:'', dur:3500,
+        fire(p){
+            this.type  = p?.type  ?? 'info';
+            this.title = p?.title ?? '';
+            this.text  = p?.text  ?? '';
+            this.show  = true;
+            // auto close sesuai durasi
+            clearTimeout(this._t); this._t = setTimeout(()=> this.show=false, this.dur);
+        },
+        init(){
+            @if (session('toast')) this.fire(@js(session('toast'))); @endif
+            window.addEventListener('toast', e => this.fire(e.detail||{}));
         }
-        function handleDragOver(e) { e.preventDefault(); this.classList.add('bg-blue-100'); }
-        function handleDragLeave(e) { e.classList.remove('bg-blue-100'); }
-        function handleDrop(e) {
-            e.preventDefault();
-            e.classList.remove('bg-blue-100');
-            const eventType = e.dataTransfer.getData('text/plain');
-            const date = this.dataset.date;
-            @this.call('quickCreateEvent', eventType, date);
-        }
-        function handleDragStart(e) { e.dataTransfer.setData('text/plain', this.dataset.type); }
-        initializeDragAndDrop();
-    });
-</script>
+    }"
+    class="fixed top-4 right-4 z-[9999]"
+    aria-live="polite"
+>
+    <div
+        x-show="show"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="opacity-0 translate-y-2"
+        x-transition:enter-end="opacity-100 translate-y-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="opacity-100 translate-y-0"
+        x-transition:leave-end="opacity-0 translate-y-2"
+        class="pointer-events-auto w-80 rounded-xl border bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur overflow-hidden"
+        :class="{
+            'border-emerald-200': type==='success',
+            'border-red-200': type==='error',
+            'border-blue-200': type==='info'
+        }"
+    >
+        <div class="flex gap-3 p-3.5">
+            {{-- Icon --}}
+            <div class="mt-0.5">
+                <template x-if="type==='success'">
+                    <svg class="h-5 w-5 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.5 12.75l6 6 9-13.5"/>
+                    </svg>
+                </template>
+                <template x-if="type==='error'">
+                    <svg class="h-5 w-5 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5.5v6.25h-1.5V7.5h1.5zm0 8.75v1.5h-1.5v-1.5h1.5z"/>
+                    </svg>
+                </template>
+                <template x-if="type==='info'">
+                    <svg class="h-5 w-5 text-blue-600" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11 9h2V7h-2v2zm0 8h2v-6h-2v6zm1-16C6.48 1 2 5.48 2 11s4.48 10 10 10 10-4.48 10-10S17.52 1 12 1z"/>
+                    </svg>
+                </template>
+            </div>
+
+            {{-- Text --}}
+            <div class="min-w-0">
+                <p class="text-sm font-semibold text-slate-900" x-text="title"></p>
+                <p class="mt-0.5 text-sm text-slate-600" x-text="text"></p>
+            </div>
+
+            {{-- Close --}}
+            <button type="button"
+                    class="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+                    @click="show=false">×</button>
+        </div>
+
+        {{-- Progress bar --}}
+        <div class="h-1 bg-slate-200">
+            <div class="h-full bg-blue-600"
+                 :style="show ? `animation: toastProgress ${dur}ms linear forwards` : ''"></div>
+        </div>
+    </div>
 </div>
+
+<style>
+@keyframes toastProgress {
+    from { width: 100%; }
+    to   { width: 0%; }
+}
+</style>
