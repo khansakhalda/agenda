@@ -562,6 +562,7 @@ class CalendarAdmin extends Component
         $this->eventsInCurrentModalSlot = collect();
         $this->modalSlotDate = null;
         $this->modalSlotHour = null;
+        $this->selectedEvent = null;
         $this->resetForm();
         $this->resetErrorBag();
     }
@@ -633,6 +634,13 @@ class CalendarAdmin extends Component
             $event = Event::find($this->editingEventId);
             if ($event) {
                 $event->delete();
+
+                // Pastikan semua state event dibersihkan
+                $this->editingEventId = null;
+                $this->currentModalEventIndex = 0;
+                $this->eventsInCurrentModalSlot = collect();
+                $this->selectedEvent = null;
+
                 $this->closeEditModal();
                 session()->flash('success', 'Acara berhasil dihapus!');
                 $this->dispatch('refreshCalendar');
@@ -690,24 +698,37 @@ class CalendarAdmin extends Component
 
     public function addParticipant()
     {
-        if (empty($this->newParticipantName)) {
+        $name = trim($this->newParticipantName);
+
+        // Reset error lama
+        $this->resetErrorBag('participants');
+
+        // Jangan proses kalau kosong
+        if (empty($name)) {
             return;
         }
 
+        // Cari atau buat baru di database (case-insensitive)
         $participant = Participant::firstOrCreate([
-            'name' => $this->newParticipantName
+            'name' => ucfirst(strtolower($name))
         ]);
 
-        // Tambahkan ke daftar peserta (opsional, jika ingin langsung dipakai di event)
-        if (!in_array($participant->id, $this->selectedParticipants)) {
-            $this->selectedParticipants[] = $participant->id;
+        // Cek apakah sudah ada di daftar terpilih
+        if (in_array($participant->id, $this->selectedParticipants)) {
+            $this->addError('participants', 'Partisipan ini sudah ada.');
+            return;
         }
 
+        // Kalau belum ada → tambahkan
+        $this->selectedParticipants[] = $participant->id;
+
+        // Reset input setelah sukses
         $this->newParticipantName = '';
 
         // Refresh daftar partisipan di sidebar
         $this->participants = Participant::orderBy('name')->get();
     }
+
 
     public function addParticipantToEvent()
     {
@@ -860,20 +881,28 @@ class CalendarAdmin extends Component
         return $participant ? $participant->name : '';
     }
 
-    public function addParticipantFromInput($name = null)
+    public function addParticipantFromInput($name)
     {
-        $name = $name ?: $this->searchParticipant;
-
-        if (empty($name))
+        if (empty(trim($name))) {
             return;
-
-        $participant = Participant::firstOrCreate(['name' => $name]);
-
-        if (!in_array($participant->id, $this->selectedParticipants)) {
-            $this->selectedParticipants[] = $participant->id;
         }
 
-        $this->searchParticipant = '';
+        $participant = Participant::firstOrCreate([
+            'name' => trim($name),
+        ]);
+
+        // Kalau sudah ada di selectedParticipants → kasih error
+        if (in_array($participant->id, $this->selectedParticipants)) {
+            $this->addError('participant_error', 'Partisipan ini sudah ada.');
+            return;
+        }
+
+        $this->resetErrorBag('participant_error'); // clear error kalau berhasil
+
+        $this->selectedParticipants[] = $participant->id;
+        $this->newParticipantName = '';
+
+        $this->participants = Participant::orderBy('name')->get();
     }
 
     private function resetSearch()
