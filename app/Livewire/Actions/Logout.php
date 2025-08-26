@@ -3,7 +3,6 @@
 namespace App\Livewire\Actions;
 
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Session;
 
 class Logout
 {
@@ -14,9 +13,17 @@ class Logout
     {
         Auth::guard('web')->logout();
 
-        Session::invalidate();
-        Session::regenerateToken();
+        // Bereskan sesi
+        session()->invalidate();
+        session()->regenerateToken();
 
-        return redirect('/');
+        // Kirim flash toast lalu arahkan ke halaman login
+        return redirect()
+            ->route('login')
+            ->with('toast', [
+                'type'  => 'success',
+                'title' => 'Signed out',
+                'text'  => 'You have been logged out safely.',
+            ]);
     }
 }
