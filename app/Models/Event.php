@@ -19,22 +19,63 @@ class Event extends Model
         'end_time',
         'all_day',
         'color',
-        'type'
+        'type',
     ];
 
     protected $casts = [
-        'start_date' => 'date',
-        'end_date' => 'date',
         'all_day' => 'boolean',
     ];
 
-    public function getStartDateTimeAttribute()
+    public function participants()
     {
-        return $this->start_date->setTimeFromTimeString($this->start_time);
+        return $this->belongsToMany(Participant::class, 'event_participants');
     }
 
+    // Accessor untuk mendapatkan start_date_time sebagai Carbon instance
+    public function getStartDateTimeAttribute()
+    {
+        try {
+            if ($this->all_day) {
+                return Carbon::parse($this->start_date)->startOfDay();
+            }
+
+            if ($this->start_time) {
+                return Carbon::parse($this->start_date . ' ' . $this->start_time);
+            }
+
+            return Carbon::parse($this->start_date)->startOfDay();
+        } catch (\Exception $e) {
+            return Carbon::parse($this->start_date)->startOfDay();
+        }
+    }
+
+    // Accessor untuk mendapatkan end_date_time sebagai Carbon instance
     public function getEndDateTimeAttribute()
     {
-        return $this->end_date->setTimeFromTimeString($this->end_time);
+        try {
+            if ($this->all_day) {
+                return Carbon::parse($this->end_date)->endOfDay();
+            }
+
+            if ($this->end_time) {
+                return Carbon::parse($this->end_date . ' ' . $this->end_time);
+            }
+
+            return Carbon::parse($this->end_date)->endOfDay();
+        } catch (\Exception $e) {
+            return Carbon::parse($this->end_date)->endOfDay();
+        }
+    }
+
+    // Helper method untuk mendapatkan start_date sebagai Carbon
+    public function getStartDateCarbonAttribute()
+    {
+        return Carbon::parse($this->start_date);
+    }
+
+    // Helper method untuk mendapatkan end_date sebagai Carbon
+    public function getEndDateCarbonAttribute()
+    {
+        return Carbon::parse($this->end_date);
     }
 }
