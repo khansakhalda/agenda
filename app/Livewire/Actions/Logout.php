@@ -22,8 +22,8 @@ class Logout
             ->route('login')
             ->with('toast', [
                 'type'  => 'success',
-                'title' => 'Signed out',
-                'text'  => 'You have been logged out safely.',
+                'title' => 'Berhasil Keluar',
+                'text'  => 'Anda telah keluar dengan aman.',
             ]);
     }
 }

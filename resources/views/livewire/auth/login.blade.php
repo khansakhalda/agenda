@@ -22,8 +22,8 @@
 
             {{-- Header --}}
             <div class="px-6 pt-4 pb-2 text-center">
-                <h1 class="text-lg font-semibold text-slate-900">Log in</h1>
-                <p class="mt-0.5 text-sm text-slate-500">Use your email and password</p>
+                <h1 class="text-lg font-semibold text-slate-900">Masuk</h1>
+                <p class="mt-0.5 text-sm text-slate-500">Gunakan email dan kata sandi Anda</p>
                 <x-auth-session-status class="mt-1 text-center" :status="session('status')" />
             </div>
 
@@ -41,7 +41,7 @@
                             required
                             autofocus
                             autocomplete="email"
-                            placeholder="enter your email address"
+                            placeholder="masukkan alamat email Anda"
                             class="w-full focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-offset-0"
                         />
                         @error('email')
@@ -53,11 +53,11 @@
                     <div>
                         <flux:input
                             wire:model.defer="password"
-                            :label="__('Password')"
+                            :label="__('Kata sandi')"
                             type="password"
                             required
                             autocomplete="current-password"
-                            :placeholder="__('enter your password')"
+                            :placeholder="__('masukkan kata sandi Anda')"
                             viewable
                             class="w-full focus:border-blue-500 focus:ring focus:ring-blue-200 focus:ring-offset-0"
                             wire:keydown.enter.prevent="login"
@@ -77,7 +77,7 @@
                                 wire:model="remember"
                                 class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                             />
-                            <span class="text-sm text-slate-700">Remember me</span>
+                            <span class="text-sm text-slate-700">Ingat saya</span>
                         </label>
                     </div>
 
@@ -89,8 +89,8 @@
                             class="w-full h-11 text-base bg-blue-600 hover:bg-blue-700 focus:ring-blue-500 shadow-md text-white"
                             wire:loading.attr="disabled"
                         >
-                            <span wire:loading.remove>{{ __('Log in') }}</span>
-                            <span wire:loading>{{ __('Processing...') }}</span>
+                            <span wire:loading.remove>{{ __('Masuk') }}</span>
+                            <span wire:loading>{{ __('Memproses...') }}</span>
                         </flux:button>
                     </div>
                 </form>

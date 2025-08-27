@@ -6,6 +6,10 @@ use Livewire\Volt\Volt;
 use App\Livewire\CalendarAdmin;
 use App\Livewire\CalendarUser;
 use App\Livewire\Settings\Tasks;
+use App\Livewire\Display\UserBoard;
+
+// --- jika bebas akses (tanpa login) ---
+Route::get('/user', UserBoard::class)->name('display.user');
 
 // Root -> login
 Route::redirect('/', '/login');

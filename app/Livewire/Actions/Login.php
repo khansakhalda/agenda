@@ -32,7 +32,7 @@ class Login extends Component
 
             // error pada form + popup gagal
             $this->addError('email', __('auth.failed'));
-            $this->dispatch('toast', type: 'error', title: 'Login failed', text: 'Incorrect email or password.');
+            $this->dispatch('toast', type: 'error', title: 'Gagal Masuk', text: 'Email atau kata sandi salah.');
             return;
         }
 
@@ -43,8 +43,8 @@ class Login extends Component
         // flash untuk halaman tujuan
         session()->flash('toast', [
             'type'  => 'success',
-            'title' => 'Signed in',
-            'text'  => 'Welcome back!',
+            'title' => 'Berhasil Masuk',
+            'text'  => 'Selamat datang kembali!',
         ]);
 
         // full reload supaya flash pasti terbaca
@@ -61,7 +61,7 @@ class Login extends Component
         event(new Lockout(request()));
         $seconds = RateLimiter::availableIn($this->throttleKey());
 
-        $this->dispatch('toast', type: 'error', title: 'Too many attempts', text: "Try again in {$seconds} seconds.");
+        $this->dispatch('toast', type: 'error', title: 'Terlalu Banyak Percobaan', text: "Coba lagi dalam {$seconds} detik.");
 
         $this->addError('email', __('auth.throttle', [
             'seconds' => $seconds,

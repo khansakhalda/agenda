@@ -4,29 +4,42 @@ namespace App\Livewire\Settings;
 
 use Livewire\Component;
 use App\Models\Event;
+use App\Models\Participant;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Schema;
 
 class Tasks extends Component
 {
-    // Listing & state
+    /* ===== Sidebar: Mini Calendar & Date ===== */
+    public int $miniCalendarMonth;
+    public int $miniCalendarYear;
+    public string $currentDate;
+
+    /* ===== Sidebar: Participants ===== */
+    /** @var \Illuminate\Support\Collection */
+    public $participants;                 // Eloquent collection untuk sidebar
+    public string $participantName = '';  // input tambah
+    public ?int $editingParticipantId = null;
+    public string $editingParticipantName = '';
+
+    /* ===== Listing & state ===== */
     public $tasks = [];
     public $pastTasks = [];
     public $soonTasks = [];
     public $completedTasks = [];
-    public $flashMessage = '';
+    public $flashMessage = ''; // tetap ada kalau suatu saat butuh flash awal
     public $sortBy = 'manual';
 
-    // Inline edit
+    /* ===== Inline edit ===== */
     public $editingTaskId = null;
     public $editingTitle = '';
     public $editingDescription = '';
 
-    // Per-task schedule map (untuk input di kartu)
+    /* ===== Per-task schedule map ===== */
     public $taskData = [];   // [id => ['start_date','start_time','end_date','end_time']]
     public $allDay = [];     // [id => bool]
 
-    // Create Event modal state
+    /* ===== Create Event modal state ===== */
     public $showCreateModal = false;
     public $title = '';
     public $description = '';
@@ -36,8 +49,57 @@ class Tasks extends Component
     public $endTime;
     public $allDayEvent = false;
 
-    /* ---------- Helpers waktu ---------- */
+    /* ===== Partisipan untuk MODAL ===== */
+    public string $searchParticipant = '';
+    public array $selectedParticipants = []; // list id peserta terpilih
+    public array $searchResults = [];
 
+    public function getFirstSuggestionForCard(string $query): string
+    {
+        $p = Participant::where('name', 'like', $query.'%')
+            ->orderBy('name')
+            ->first();
+
+        return $p ? $p->name : '';
+    }
+
+    public function attachParticipant(int $taskId, string $name): void
+    {
+        // Normalisasi: trim, satukan spasi, case-insensitive compare
+        $norm = trim(preg_replace('/\s+/', ' ', $name));
+        if ($norm === '') return;
+
+        $event = Event::find($taskId);
+        if (!$event) return;
+
+        // Cari existing tanpa peduli kapitalisasi
+        $existing = Participant::whereRaw('LOWER(name) = ?', [mb_strtolower($norm)])->first();
+        $participant = $existing ?: Participant::create(['name' => $norm]);
+
+        // Pasang tanpa menduplikasi relasi
+        $event->participants()->syncWithoutDetaching([$participant->id]);
+
+        // Pastikan sidebar langsung mutakhir
+        $this->reloadParticipants();
+
+        // Notifikasi
+        $this->dispatch('toast', type:'success', title:'Partisipan Ditambahkan', text:'Partisipan ditambahkan ke tugas.');
+    }
+
+    public function detachParticipant(int $taskId, int $participantId): void
+    {
+        if ($event = Event::find($taskId)) {
+            $event->participants()->detach($participantId);
+
+            // Segarkan sidebar juga
+            $this->reloadParticipants();
+
+            // Notifikasi
+            $this->dispatch('toast', type:'info', title:'Partisipan Dihapus', text:'Partisipan dihapus dari tugas.');
+        }
+    }
+
+    /* ===================== Helpers waktu ===================== */
     public function getTimeOptions()
     {
         $times = [];
@@ -59,11 +121,9 @@ class Tasks extends Component
         return $t->format('H:i');
     }
 
-    /* ---------- Modal Create ---------- */
-
+    /* ===================== Modal Create ===================== */
     public function openCreateModal()
     {
-        // Default
         $this->reset(['title', 'description', 'allDayEvent']);
         $this->startDate = now()->format('Y-m-d');
         $this->endDate   = now()->format('Y-m-d');
@@ -71,7 +131,12 @@ class Tasks extends Component
         $this->startTime = $this->nearestThirty();
         $this->endTime   = Carbon::createFromFormat('H:i', $this->startTime)->addHour()->format('H:i');
 
+        // reset state partisipan MODAL
         $this->resetErrorBag();
+        $this->searchParticipant = '';
+        $this->selectedParticipants = [];
+        $this->searchResults = [];
+
         $this->showCreateModal = true;
     }
 
@@ -83,7 +148,6 @@ class Tasks extends Component
 
     public function createEvent()
     {
-        // Validasi input
         $this->validate([
             'title'       => 'required|string|max:255',
             'description' => 'nullable|string',
@@ -93,11 +157,10 @@ class Tasks extends Component
             'endTime'     => $this->allDayEvent ? 'nullable' : 'required|date_format:H:i',
         ]);
 
-        // Simpan ke DB (kolom tanggal & jam terpisah)
         $startTime = $this->allDayEvent ? '00:00:00' : $this->startTime . ':00';
         $endTime   = $this->allDayEvent ? '23:59:59' : $this->endTime . ':00';
 
-        Event::create([
+        $event = Event::create([
             'title'         => $this->title,
             'description'   => $this->description,
             'start_date'    => $this->startDate,
@@ -109,21 +172,41 @@ class Tasks extends Component
             'completed_at'  => null,
         ]);
 
-        // Tutup modal & reset form
-        $this->showCreateModal = false;
-        $this->reset(['title','description','startDate','startTime','endDate','endTime','allDayEvent']);
+        // attach partisipan yang dipilih di MODAL
+        if (!empty($this->selectedParticipants)) {
+            $event->participants()->attach($this->selectedParticipants);
+        }
 
-        $this->flashMessage = 'Event created successfully!';
+        $this->showCreateModal = false;
+        $this->reset([
+            'title','description','startDate','startTime','endDate','endTime','allDayEvent',
+            'searchParticipant','selectedParticipants','searchResults'
+        ]);
+
+        // Notifikasi
+        $this->dispatch('toast', type:'success', title:'Berhasil Dibuat', text:'Acara telah berhasil dibuat.');
+
         $this->loadTasks();
     }
 
-    /* ---------- Lifecycle & Sorting ---------- */
-
+    /* ===================== Lifecycle ===================== */
     public function mount()
     {
+        $today = Carbon::now();
+        $this->miniCalendarMonth = (int) $today->format('m');
+        $this->miniCalendarYear  = (int) $today->format('Y');
+        $this->currentDate       = $today->toDateString();
+
+        $this->reloadParticipants(); // sidebar
         $this->loadTasks();
     }
 
+    private function reloadParticipants(): void
+    {
+        $this->participants = Participant::orderBy('name')->get();
+    }
+
+    /* ===================== Sorting & Load Tasks ===================== */
     public function setSort($sort)
     {
         $this->sortBy = $sort;
@@ -132,16 +215,13 @@ class Tasks extends Component
 
     public function loadTasks()
     {
-        // Ambil semua event
         $base = Event::query();
 
-        // Daftar aktif (belum completed)
         $activeQuery = (clone $base)->when(
             Schema::hasColumn('events', 'is_completed'),
             fn($q) => $q->where('is_completed', false)
         );
 
-        // SORTING — gunakan kolom nyata (bukan accessor)
         switch ($this->sortBy) {
             case 'date':
                 $activeQuery->orderBy('start_date', 'asc')->orderBy('start_time', 'asc');
@@ -160,24 +240,10 @@ class Tasks extends Component
 
         $events = $activeQuery->get();
 
-        // Completed
         $this->completedTasks = Schema::hasColumn('events', 'is_completed')
-            ? (clone $base)
-                ->where('is_completed', true)
-                ->orderByDesc('completed_at')
-                ->get()
-                ->map(function ($event) {
-                    return (object) [
-                        'id'               => $event->id,
-                        'title'            => $event->title,
-                        'description'      => $event->description ?? '',
-                        'completed_at'     => optional($event->completed_at)?->toDateTimeString(),
-                        'completed_human'  => optional($event->completed_at)?->diffForHumans(),
-                    ];
-                })
+            ? (clone $base)->where('is_completed', true)->orderByDesc('completed_at')->get()
             : collect();
 
-        // Map daftar aktif → objek kartu (pakai accessor start_date_time / end_date_time)
         $allTasks = $events->map(function ($event) {
             $end = optional($event->end_date_time);
             $isOverdue = $end?->lt(now());
@@ -195,7 +261,6 @@ class Tasks extends Component
             ];
         });
 
-        // Kategorisasi task aktif
         if ($this->sortBy === 'date') {
             $this->soonTasks = $allTasks->filter(fn ($t) =>
                 isset($t->end_date_time) && Carbon::parse($t->end_date_time)->gte(now())
@@ -216,7 +281,6 @@ class Tasks extends Component
             $this->pastTasks = [];
         }
 
-        // Mapping taskData & allDay (untuk inline schedule)
         $this->taskData = $allTasks->mapWithKeys(function ($task) {
             return [$task->id => [
                 'start_date' => $task->start_date_time ? Carbon::parse($task->start_date_time)->format('Y-m-d') : '',
@@ -229,20 +293,18 @@ class Tasks extends Component
         $this->allDay = $events->mapWithKeys(fn ($e) => [$e->id => (bool) $e->all_day])->toArray();
     }
 
-    /* ---------- Actions (aktif <-> completed) ---------- */
-
+    /* ===================== Actions (aktif <-> completed) ===================== */
     public function toggleStar($id)
     {
         if ($event = Event::find($id)) {
             $event->is_starred = ! $event->is_starred;
             $event->save();
 
-            $this->flashMessage = 'Star status updated!';
+            $this->dispatch('toast', type:'success', title:'Status Bintang Diubah', text:'Tugas diperbarui.');
             $this->loadTasks();
         }
     }
 
-    // centang kiri pada kartu aktif → Completed (jangan destroy)
     public function markAsDone($id)
     {
         if ($event = Event::find($id)) {
@@ -250,12 +312,11 @@ class Tasks extends Component
             $event->completed_at = now();
             $event->save();
 
-            $this->flashMessage = 'Task completed!';
+            $this->dispatch('toast', type:'success', title:'Tugas Selesai', text:'Tugas telah ditandai selesai.');
             $this->loadTasks();
         }
     }
 
-    // ikon tong sampah pada kartu aktif → Completed juga
     public function deleteTask($id)
     {
         if ($event = Event::find($id)) {
@@ -263,28 +324,27 @@ class Tasks extends Component
             $event->completed_at = now();
             $event->save();
 
-            $this->flashMessage = 'Task moved to Completed!';
+            $this->dispatch('toast', type:'info', title:'Dipindahkan', text:'Tugas dipindahkan ke bagian Selesai.');
             $this->loadTasks();
         }
     }
 
-    // tombol trash pada kartu Completed → hapus permanen
     public function destroyTask($id)
     {
         Event::destroy($id);
-        $this->flashMessage = 'Task permanently deleted!';
+
+        $this->dispatch('toast', type:'success', title:'Berhasil Dihapus', text:'Tugas dihapus secara permanen.');
         $this->loadTasks();
     }
 
-    // tombol Clear all di bagian Completed
     public function clearCompleted()
     {
         Event::where('is_completed', true)->delete();
-        $this->flashMessage = 'All completed tasks deleted!';
+
+        $this->dispatch('toast', type:'success', title:'Bersih!', text:'Semua tugas selesai telah dihapus.');
         $this->loadTasks();
     }
 
-    // tombol centang di Completed → kembalikan ke aktif
     public function restoreTask($id)
     {
         if ($event = Event::find($id)) {
@@ -292,13 +352,12 @@ class Tasks extends Component
             $event->completed_at = null;
             $event->save();
 
-            $this->flashMessage = 'Task restored!';
+            $this->dispatch('toast', type:'success', title:'Dipulihkan', text:'Tugas berhasil dipulihkan.');
             $this->loadTasks();
         }
     }
 
-    /* ---------- Inline edit ---------- */
-
+    /* ===================== Inline edit ===================== */
     public function startEditing($id)
     {
         if ($task = Event::find($id)) {
@@ -315,7 +374,7 @@ class Tasks extends Component
             $task->description = trim($this->editingDescription);
             $task->save();
 
-            $this->flashMessage = 'Task updated!';
+            $this->dispatch('toast', type:'success', title:'Berhasil Diedit', text:'Perubahan telah disimpan.');
         }
 
         $this->editingTaskId = null;
@@ -332,8 +391,7 @@ class Tasks extends Component
         $this->editingDescription = '';
     }
 
-    /* ---------- Update schedule pada kartu ---------- */
-
+    /* ===================== Update schedule pada kartu ===================== */
     public function updateSchedule($taskId, $startDate, $startTime, $endDate, $endTime)
     {
         if ($task = Event::find($taskId)) {
@@ -353,34 +411,159 @@ class Tasks extends Component
             $task->all_day = $isAllDay;
             $task->save();
 
-            $this->flashMessage = 'Task schedule updated!';
+            $this->dispatch('toast', type:'success', title:'Jadwal Diperbarui', text:'Waktu tugas berhasil diubah.');
             $this->loadTasks();
         }
     }
 
-    public function updatedEditingTitle($value) {}
-    public function updatedEditingDescription($value) {}
+    /* ===================== Participants (SIDEBAR) ===================== */
+    public function addParticipant(): void
+    {
+        $name = trim($this->participantName);
+        if ($name === '') return;
 
-    /* ---------- Render ---------- */
+        Participant::firstOrCreate(['name' => ucfirst(strtolower($name))]);
+        $this->participantName = '';
+        $this->reloadParticipants();
+    }
 
+    public function editParticipant(int $id): void
+    {
+        $this->editingParticipantId = $id;
+        $this->editingParticipantName = Participant::find($id)?->name ?? '';
+    }
+
+    public function updateParticipant(): void
+    {
+        if (!$this->editingParticipantId) return;
+        $name = trim($this->editingParticipantName);
+        if ($name === '') { $this->cancelEditParticipant(); return; }
+
+        if ($p = Participant::find($this->editingParticipantId)) {
+            $p->update(['name' => $name]);
+        }
+        $this->cancelEditParticipant();
+        $this->reloadParticipants();
+    }
+
+    public function cancelEditParticipant(): void
+    {
+        $this->editingParticipantId = null;
+        $this->editingParticipantName = '';
+    }
+
+    public function deleteParticipant(int $id): void
+    {
+        if ($p = Participant::find($id)) {
+            $p->delete();
+            $this->reloadParticipants();
+        }
+    }
+
+    /* ===== Participants (MODAL) – dipanggil dari Blade ===== */
+    public function getFirstSuggestion($query)
+    {
+        $p = Participant::where('name', 'like', $query.'%')->orderBy('name')->first();
+        return $p ? $p->name : '';
+    }
+
+    public function addParticipantFromInput($name)
+    {
+        $name = trim($name);
+        if ($name === '') return;
+
+        $p = Participant::firstOrCreate(['name' => $name]);
+        if (!in_array($p->id, $this->selectedParticipants)) {
+            $this->selectedParticipants[] = $p->id;
+        }
+        $this->searchParticipant = '';
+        $this->searchResults = [];
+    }
+
+    public function addSelectedParticipant($participantId)
+    {
+        $participantId = (int) $participantId;
+        if ($participantId && !in_array($participantId, $this->selectedParticipants)) {
+            $this->selectedParticipants[] = $participantId;
+        }
+        $this->searchParticipant = '';
+        $this->searchResults = [];
+    }
+
+    public function removeSelectedParticipant($index)
+    {
+        if (isset($this->selectedParticipants[$index])) {
+            unset($this->selectedParticipants[$index]);
+            $this->selectedParticipants = array_values($this->selectedParticipants);
+        }
+    }
+
+    public function updatedSearchParticipant()
+    {
+        if (trim($this->searchParticipant) === '') {
+            $this->searchResults = [];
+            return;
+        }
+
+        $this->searchResults = Participant::where('name', 'like', '%'.$this->searchParticipant.'%')
+            ->orderBy('name')
+            ->limit(5)
+            ->get()
+            ->map(fn($p) => ['id' => $p->id, 'name' => $p->name])
+            ->toArray();
+    }
+
+    /* ===================== Mini Calendar (sidebar) ===================== */
+    public function prevMiniMonth(): void
+    {
+        $d = Carbon::create($this->miniCalendarYear, $this->miniCalendarMonth, 1)->subMonth();
+        $this->miniCalendarYear  = (int) $d->format('Y');
+        $this->miniCalendarMonth = (int) $d->format('m');
+    }
+
+    public function nextMiniMonth(): void
+    {
+        $d = Carbon::create($this->miniCalendarYear, $this->miniCalendarMonth, 1)->addMonth();
+        $this->miniCalendarYear  = (int) $d->format('Y');
+        $this->miniCalendarMonth = (int) $d->format('m');
+    }
+
+    public function selectMiniCalendarDate(string $date): void
+    {
+        $this->currentDate = $date;
+    }
+
+    /* ===================== Render ===================== */
     public function render()
     {
         return view('livewire.settings.tasks', [
-            'tasks'           => $this->tasks,
-            'soonTasks'       => $this->soonTasks,
-            'pastTasks'       => $this->pastTasks,
-            'completedTasks'  => $this->completedTasks,
-            'sortBy'          => $this->sortBy,
-            'stats'           => $this->getStats(),
-            'taskData'        => $this->taskData,
-            'allDay'          => $this->allDay,
-            'showCreateModal' => $this->showCreateModal,
+            'tasks'               => $this->tasks,
+            'soonTasks'           => $this->soonTasks,
+            'pastTasks'           => $this->pastTasks,
+            'completedTasks'      => $this->completedTasks,
+            'sortBy'              => $this->sortBy,
+            // 'stats'             => $this->getStats(), // tidak perlu di halaman Tasks
+
+            'taskData'            => $this->taskData,
+            'allDay'              => $this->allDay,
+            'showCreateModal'     => $this->showCreateModal,
+
+            // untuk partial sidebar
+            'miniCalendarYear'    => $this->miniCalendarYear,
+            'miniCalendarMonth'   => $this->miniCalendarMonth,
+            'currentDate'         => $this->currentDate,
+            'participants'        => $this->participants,
+            'editingParticipantId'=> $this->editingParticipantId,
+            'editingParticipantName' => $this->editingParticipantName,
+
+            // turn OFF these sections on Tasks sidebar
+            'showMiniCalendar'    => false,
+            'showStats'           => false,
         ]);
     }
 
     protected function getStats()
     {
-        // Semua pakai kolom asli (bukan accessor)
         return [
             'total'     => Event::count(),
             'today'     => Event::whereDate('start_date', today())->count(),
@@ -388,12 +571,12 @@ class Tasks extends Component
                                 ->whereYear('start_date', today()->year)
                                 ->count(),
             'upcoming'  => Event::where(function ($q) {
-                                $q->where('start_date', '>', today())
-                                  ->orWhere(function ($q2) {
-                                      $q2->whereDate('start_date', today())
-                                         ->whereTime('start_time', '>=', now()->format('H:i:s'));
-                                  });
-                           })->count(),
+                $q->where('start_date', '>', today())
+                  ->orWhere(function ($q2) {
+                      $q2->whereDate('start_date', today())
+                         ->whereTime('start_time', '>=', now()->format('H:i:s'));
+                  });
+            })->count(),
         ];
     }
 }

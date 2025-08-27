@@ -1,325 +1,202 @@
-<div wire:poll class="min-h-screen bg-gray-50"><!-- Root element -->
-    <div class="flex min-h-screen items-stretch">
-        {{-- Main Content --}}
-        <div class="flex-1 p-6">
-            <div class="flex justify-between items-center mb-5">
-                <h2 class="text-xl font-semibold leading-tight text-gray-800">Task List</h2>
+{{-- resources/views/livewire/settings/tasks.blade.php --}}
+<div wire:poll class="min-h-screen bg-gray-50">
+  <div class="flex min-h-screen">
 
-                {{-- Create Event + Sort --}}
-                <div class="flex items-center space-x-4">
-                    <button
-                        wire:click="openCreateModal"
-                        wire:loading.attr="disabled"
-                        wire:target="openCreateModal,createEvent"
-                        class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span wire:loading.remove wire:target="openCreateModal">Create Event</span>
-                        <span wire:loading wire:target="openCreateModal">Loading...</span>
-                    </button>
+    {{-- Sidebar: Sembunyikan mini calendar di halaman Tasks --}}
+    @include('partials.sidebar', ['showMiniCalendar' => false])
 
-                    {{-- Sort Dropdown (Alpine) --}}
-                    <div x-data="{ open: false }" class="relative">
-                        <button @click="open = !open" class="text-gray-600 hover:text-black focus:outline-none">
-                            <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm0 5a1.5 1.5 0 110 3 1.5 1.5 0 010-3z" />
-                            </svg>
-                        </button>
+    {{-- Main Content --}}
+    <div class="flex-1 p-6">
+      <div class="flex justify-between items-center mb-5">
+        <h2 class="text-xl font-semibold leading-tight text-gray-800">Daftar Tugas</h2>
 
-                        <div
-                            x-show="open"
-                            @click.away="open = false"
-                            x-transition:enter="transition ease-out duration-150"
-                            x-transition:enter-start="opacity-0 scale-95"
-                            x-transition:enter-end="opacity-100 scale-100"
-                            x-transition:leave="transition ease-in duration-100"
-                            x-transition:leave-start="opacity-100 scale-100"
-                            x-transition:leave-end="opacity-0 scale-95"
-                            class="absolute right-0 mt-2 w-52 bg-white border rounded-xl shadow-xl z-50 text-sm overflow-hidden origin-top-right"
-                        >
-                            <div class="px-4 py-3 text-gray-500 font-semibold border-b">Sort by</div>
-
-                            @php
-                                $sortOptions = [
-                                    'manual'  => 'My order',
-                                    'date'    => 'Date',
-                                    'starred' => 'Starred recently',
-                                    'title'   => 'Title',
-                                ];
-                            @endphp
-
-                            @foreach ($sortOptions as $value => $label)
-                                <button
-                                    @click="open = false"
-                                    wire:click="setSort('{{ $value }}')"
-                                    class="w-full flex items-center justify-between px-4 py-2 text-left hover:bg-gray-100 transition"
-                                    :class="{ 'bg-gray-100 font-medium': '{{ $sortBy }}' === '{{ $value }}' }"
-                                >
-                                    <span class="{{ $sortBy === $value ? 'text-gray-900 font-medium' : 'text-gray-700' }}">
-                                        {{ $label }}
-                                    </span>
-                                    @if ($sortBy === $value)
-                                        <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-                                        </svg>
-                                    @endif
-                                </button>
-                            @endforeach
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {{-- Flash Message --}}
-            @if ($flashMessage)
-                <div
-                    x-data="{ show: true }"
-                    x-show="show"
-                    x-transition:enter="transition ease-out duration-300"
-                    x-transition:enter-start="opacity-0 -translate-y-4"
-                    x-transition:enter-end="opacity-100 translate-y-0"
-                    x-transition:leave="transition ease-in duration-300"
-                    x-transition:leave-start="opacity-100 translate-y-0"
-                    x-transition:leave-end="opacity-0 -translate-y-4"
-                    x-init="setTimeout(() => show = false, 3000)"
-                    :class="{
-    // Kuning
-    'bg-yellow-100 text-yellow-800 border border-yellow-200': 
-        '{{ $flashMessage }}' === 'Star status updated!',
-
-    // Hijau
-    'bg-green-100 text-green-800 border border-green-200': 
-        '{{ $flashMessage }}' === 'Event created successfully!' ||
-        '{{ $flashMessage }}' === 'Task restored!' ||
-        '{{ $flashMessage }}' === 'Task updated!' ||
-        '{{ $flashMessage }}' === 'Task schedule updated!' ||
-        '{{ $flashMessage }}' === 'Task completed!',
-
-    // Merah
-    'bg-red-100 text-red-800 border border-red-200': 
-        '{{ $flashMessage }}' === 'Task moved to Completed!' ||
-        '{{ $flashMessage }}' === 'Task permanently deleted!' ||
-        '{{ $flashMessage }}' === 'All completed tasks deleted!'
-}"
-                    class="fixed top-6 right-6 z-50 px-4 py-2 rounded-lg shadow-md text-sm font-semibold"
-                >
-                    {{ $flashMessage }}
-                </div>
-            @endif
-
-            {{-- Task List (aktif) --}}
-            @if ($sortBy === 'date' || $sortBy === 'starred')
-                <div class="mb-8">
-                    <h3 class="text-gray-700 font-semibold text-lg mb-4">
-                        {{ $sortBy === 'starred' ? 'Starred' : 'Soon' }}
-                    </h3>
-                    <div class="flex flex-col space-y-4">
-                        @forelse ($soonTasks as $task)
-                            @include('livewire.settings.task-card', ['task' => $task])
-                        @empty
-                            <p class="text-gray-500 italic">No {{ $sortBy === 'starred' ? 'starred' : 'upcoming' }} tasks.</p>
-                        @endforelse
-                    </div>
-                </div>
-
-                <div class="mb-10 space-y-4">
-                    <h3 class="text-gray-700 font-semibold text-lg mb-4">
-                        {{ $sortBy === 'starred' ? 'Not Starred' : 'Past' }}
-                    </h3>
-                    @forelse ($pastTasks as $task)
-                        @include('livewire.settings.task-card', ['task' => $task])
-                    @empty
-                        <p class="text-gray-500 italic">No {{ $sortBy === 'starred' ? 'not starred' : 'past' }} tasks.</p>
-                    @endforelse
-                </div>
-            @else
-                <div class="flex flex-col space-y-4 mb-10">
-                    @forelse ($tasks as $task)
-                        @include('livewire.settings.task-card', ['task' => $task])
-                    @empty
-                        <p class="text-center text-gray-500">No tasks yet.</p>
-                    @endforelse
-                </div>
-            @endif
-
-{{-- Completed Section (dropdown; card mirip task-card tapi abu-abu/disabled) --}}
-<div class="mt-6" x-data="{ openCompleted: true }">
-  <div class="flex items-center justify-between mb-3">
-    <!-- Tombol dropdown ala chevron kecil di kiri -->
-    <button type="button"
-            @click="openCompleted = !openCompleted"
-            class="flex items-center space-x-2 text-gray-700 hover:text-black font-medium">
-      <svg class="w-4 h-4 text-gray-500 transition-transform duration-200"
-           :class="openCompleted ? 'rotate-90' : ''"
-           viewBox="0 0 24 24" fill="currentColor">
-        <path d="M8.25 4.5l7.5 7.5-7.5 7.5" />
-      </svg>
-      <span>Completed ({{ $completedTasks->count() }})</span>
-    </button>
-
-    @if($completedTasks->count() > 0)
-      <button wire:click="clearCompleted"
-              class="text-sm px-3 py-1.5 rounded-md border text-red-600 border-red-200 hover:bg-red-50">
-        Delete all completed
-      </button>
-    @endif
-  </div>
-
-  <div x-show="openCompleted"
-       x-transition:enter="transition ease-out duration-200"
-       x-transition:enter-start="opacity-0 -translate-y-1"
-       x-transition:enter-end="opacity-100 translate-y-0"
-       x-transition:leave="transition ease-in duration-150"
-       x-transition:leave-start="opacity-100 translate-y-0"
-       x-transition:leave-end="opacity-0 -translate-y-1"
-       class="space-y-3">
-
-    @forelse($completedTasks as $c)
-      <div class="flex items-center justify-between group p-4 border rounded-xl 
-                  bg-gray-100 hover:bg-gray-100 transition-all duration-300 shadow-sm opacity-80">
-        <div class="flex items-start w-0 flex-1 space-x-3">
-          
-          {{-- Checkbox (klik restore) --}}
-          <button type="button" wire:click="restoreTask({{ $c->id }})"
-                  class="relative cursor-pointer flex items-center flex-shrink-0 mt-0.5">
-            <div class="w-6 h-6 rounded-full border-2 border-gray-300 bg-white flex items-center justify-center
-                        transition-all duration-300 shadow-sm">
-              <svg class="w-4 h-4 text-blue-500 opacity-100"
-                   fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
+        {{-- Buat Acara + Sort --}}
+        <div class="flex items-center space-x-4">
+          <button
+            wire:click="openCreateModal"
+            wire:loading.attr="disabled"
+            wire:target="openCreateModal,createEvent"
+            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            <span wire:loading.remove wire:target="openCreateModal">Buat Acara</span>
+            <span wire:loading wire:target="openCreateModal">Memuat...</span>
           </button>
 
-          {{-- Konten --}}
-          <div class="flex-1 overflow-hidden pointer-events-none">
-            <div class="font-semibold text-gray-600 line-through break-words whitespace-normal w-full leading-tight">
-              {{ $c->title }}
+          {{-- Dropdown Urutkan (Alpine) --}}
+          @include('partials.sort-dropdown')
+        </div>
+      </div>
+
+      {{-- ======================= TOAST NOTIFIKASI (INDONESIA) ======================= --}}
+      <div
+        x-data="{
+          show:false, type:'success', title:'', text:'', duration:3200, t:null,
+          palette:{
+            success:{ ring:'ring-emerald-200', icon:'#059669', bar:'bg-blue-600' },
+            info:{ ring:'ring-blue-200', icon:'#2563eb', bar:'bg-blue-600' },
+            warning:{ ring:'ring-amber-200', icon:'#d97706', bar:'bg-amber-500' },
+            error:{ ring:'ring-red-200', icon:'#dc2626', bar:'bg-red-600' },
+          },
+          fire(p){
+            clearTimeout(this.t);
+            this.type = p?.type ?? 'success';
+            this.title = p?.title ?? '';
+            this.text  = p?.text  ?? '';
+            this.duration = p?.duration ?? 3200;
+            this.show = true;
+            this.t = setTimeout(() => this.show = false, this.duration);
+          },
+          init(){
+            // Dukung flashMessage dari server (bisa string atau array {type,title,text})
+            @if ($flashMessage)
+              @if (is_array($flashMessage))
+                this.fire(@js($flashMessage));
+              @else
+                this.fire({ type:'success', title:'Berhasil', text:@js($flashMessage) });
+              @endif
+            @endif
+
+            // Dukung event Livewire/Alpine: window.dispatchEvent(new CustomEvent('toast', {detail:{...}}))
+            window.addEventListener('toast', e => this.fire(e.detail || {}));
+          }
+        }"
+        class="fixed top-6 right-6 z-50"
+        aria-live="polite"
+      >
+        <div
+          x-show="show"
+          x-transition.opacity.duration.200ms
+          class="pointer-events-auto w-80 rounded-xl border bg-white/95 shadow-2xl ring-1 ring-black/5 backdrop-blur overflow-hidden"
+          :class="palette[type].ring"
+        >
+          <div class="flex gap-3 p-3.5">
+            <div class="mt-0.5 shrink-0">
+              <template x-if="type==='success'">
+                <svg class="h-5 w-5" :style="`color:${palette[type].icon}`" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.5 12.75l6 6 9-13.5"/>
+                </svg>
+              </template>
+              <template x-if="type==='info'">
+                <svg class="h-5 w-5" :style="`color:${palette[type].icon}`" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M11 9h2V7h-2v2zm0 8h2v-6h-2v6zm1-16C6.48 1 2 5.48 2 11s4.48 10 10 10 10-4.48 10-10S17.52 1 12 1z"/>
+                </svg>
+              </template>
+              <template x-if="type==='warning'">
+                <svg class="h-5 w-5" :style="`color:${palette[type].icon}`" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+                </svg>
+              </template>
+              <template x-if="type==='error'">
+                <svg class="h-5 w-5" :style="`color:${palette[type].icon}`" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5.5v6.25h-1.5V7.5h1.5zm0 8.75v1.5h-1.5v-1.5h1.5z"/>
+                </svg>
+              </template>
             </div>
 
-            <div class="text-sm text-gray-500 mt-1 line-clamp-2 leading-snug">
-              {{ $c->description ?: 'No description' }}
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-slate-900" x-text="title"></p>
+              <p class="mt-0.5 text-sm text-slate-600" x-text="text"></p>
             </div>
 
-            <div class="text-xs text-gray-500 mt-1">
-              Completed: {{ optional(\Carbon\Carbon::parse($c->completed_at))->format('D, M j') ?? '-' }}
-            </div>
+            <button type="button"
+                    class="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100"
+                    @click="show=false" aria-label="Tutup">×</button>
+          </div>
+
+          <div class="h-1 bg-slate-200">
+            <div class="h-full" :class="palette[type].bar"
+                 :style="show ? `animation: toastProgress ${duration}ms linear forwards` : ''"></div>
           </div>
         </div>
 
-        {{-- Trash (hapus permanen) --}}
-        <button type="button" wire:click="destroyTask({{ $c->id }})"
-                class="text-red-500 hover:text-red-700 transition-colors duration-200">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5"
-               viewBox="0 0 24 24" fill="currentColor">
-            <path d="M3 6h18v2H3V6zm2 3h14l-1.5 12.5a1 1 0 0 1-1 .87H7.5a1 1 0 0 1-1-.87L5 9zm5-5h4a1 1 0 0 1 1 1v1H9V5a1 1 0 0 1 1-1z"/>
-          </svg>
-        </button>
+        <style>
+          @keyframes toastProgress { from { width: 100%; } to { width: 0%; } }
+        </style>
       </div>
-    @empty
-      <p class="text-gray-400 text-sm">No completed tasks.</p>
-    @endforelse
-  </div>
-</div>
+      {{-- ===================== /TOAST ===================== --}}
 
-    {{-- Modal: Create Event (match CalendarAdmin) --}}
-    @if($showCreateModal)
-        <div class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50 flex items-center justify-center">
-            <div class="relative mx-auto p-5 border w-[480px] md:w-[520px] max-w-[92vw] shadow-lg rounded-md bg-white">
-                <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-lg font-bold text-gray-900">Create New Event</h3>
-                    <button wire:click="closeCreateModal" class="text-gray-800 hover:text-gray-900">
-                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
-                        </svg>
-                    </button>
-                </div>
-
-                <form wire:submit.prevent="createEvent" class="space-y-4">
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Event Title</label>
-                        <input type="text" wire:model.defer="title" placeholder="Event title"
-                               class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        @error('title') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                        <textarea wire:model.defer="description" placeholder="Event description" rows="3"
-                                  class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
-                        @error('description') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                    </div>
-
-                    <div class="flex items-center">
-                        <input type="checkbox" id="allDayEvent" wire:model="allDayEvent" class="mr-2">
-                        <label for="allDayEvent" class="text-sm text-gray-700">All day</label>
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                            <input type="date" wire:model.defer="startDate"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            @error('startDate') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                        </div>
-
-                        @if(!$allDayEvent)
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
-                                <select wire:model.defer="startTime"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    <option value="">Select start time</option>
-                                    @foreach($this->getTimeOptions() as $time)
-                                        <option value="{{ $time }}">{{ $time }}</option>
-                                    @endforeach
-                                </select>
-                                @error('startTime') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                            </div>
-                        @endif
-                    </div>
-
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                            <input type="date" wire:model.defer="endDate"
-                                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            @error('endDate') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                        </div>
-
-                        @if(!$allDayEvent)
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1">End Time</label>
-                                <select wire:model.defer="endTime"
-                                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                    <option value="">Select end time</option>
-                                    @foreach($this->getTimeOptions() as $time)
-                                        <option value="{{ $time }}">{{ $time }}</option>
-                                    @endforeach
-                                </select>
-                                @error('endTime') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
-                            </div>
-                        @endif
-                    </div>
-
-                    <div class="flex justify-end space-x-3 pt-2">
-                        <button type="button" wire:click="closeCreateModal"
-                                class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
-                            Cancel
-                        </button>
-                        <button type="submit"
-                                wire:loading.attr="disabled"
-                                wire:target="createEvent"
-                                class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                            <span wire:loading.remove wire:target="createEvent">Create</span>
-                            <span wire:loading wire:target="createEvent" class="flex items-center">
-                                <svg class="animate-spin -ml-1 mr-3 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                Saving...
-                            </span>
-                        </button>
-                    </div>
-                </form>
-            </div>
+      {{-- Task List --}}
+      @if ($sortBy === 'date' || $sortBy === 'starred')
+        <div class="mb-8">
+          <h3 class="text-gray-700 font-semibold text-lg mb-4">
+            {{ $sortBy === 'starred' ? 'Berbintang' : 'Segera' }}
+          </h3>
+          <div class="flex flex-col space-y-4">
+            @forelse ($soonTasks as $task)
+              @include('livewire.settings.task-card', ['task' => $task])
+            @empty
+              <p class="text-gray-500 italic">
+                {{ $sortBy === 'starred' ? 'Belum ada tugas berbintang.' : 'Tidak ada tugas mendatang.' }}
+              </p>
+            @endforelse
+          </div>
         </div>
-    @endif
+
+        <div class="mb-10 space-y-4">
+          <h3 class="text-gray-700 font-semibold text-lg mb-4">
+            {{ $sortBy === 'starred' ? 'Tidak berbintang' : 'Lampau' }}
+          </h3>
+          @forelse ($pastTasks as $task)
+            @include('livewire.settings.task-card', ['task' => $task])
+          @empty
+            <p class="text-gray-500 italic">
+              {{ $sortBy === 'starred' ? 'Tidak ada tugas non-bintang.' : 'Tidak ada tugas lampau.' }}
+            </p>
+          @endforelse
+        </div>
+      @else
+        <div class="flex flex-col space-y-4 mb-10">
+          @forelse ($tasks as $task)
+            @include('livewire.settings.task-card', ['task' => $task])
+          @empty
+            <p class="text-center text-gray-500">Belum ada tugas.</p>
+          @endforelse
+        </div>
+      @endif
+
+      {{-- Bagian: Selesai --}}
+      @include('partials.task-completed')
+
+      {{-- Modal Buat Acara (pakai partial yang sama dengan calendar admin) --}}
+      @include('partials.modal-create')
+    </div>
+  </div>
+
+  {{-- ======================= MODAL KONFIRMASI (INDONESIA) ======================= --}}
+  <div
+    x-data="{
+      open:false, title:'', text:'', confirmText:'Ya', cancelText:'Tidak', method:null, args:[],
+      ask(p){ this.title=p?.title||'Hapus data?'; this.text=p?.text||'Apakah Anda yakin ingin menghapus? Tindakan ini tidak bisa dibatalkan.'; this.confirmText=p?.confirmText||'Ya'; this.cancelText=p?.cancelText||'Tidak'; this.method=p?.method||null; this.args=p?.args||[]; this.open=true; },
+      confirm(){ if(this.method){ $wire.call(this.method, ...this.args); } this.open=false; },
+      init(){ window.addEventListener('confirm', e => this.ask(e.detail||{})); }
+    }"
+    x-show="open"
+    x-cloak
+    class="fixed inset-0 z-[9998] flex items-center justify-center"
+  >
+    <div class="absolute inset-0 bg-black/40" @click="open=false"></div>
+
+    <div x-show="open" x-transition class="relative z-[9999] w-[92vw] max-w-md rounded-2xl bg-white shadow-2xl ring-1 ring-black/5 p-5">
+      <div class="flex items-start gap-3">
+        <div class="mt-0.5">
+          <svg class="h-6 w-6 text-red-600" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 2a10 10 0 100 20 10 10 0 000-20zm.75 5.5v6.25h-1.5V7.5h1.5zm0 8.75v1.5h-1.5v-1.5h1.5z"/>
+          </svg>
+        </div>
+        <div class="min-w-0">
+          <h3 class="text-base font-semibold text-slate-900" x-text="title"></h3>
+          <p class="mt-1 text-sm text-slate-600" x-text="text"></p>
+        </div>
+        <button class="ml-auto h-8 w-8 grid place-items-center rounded-md text-slate-500 hover:bg-slate-100"
+                @click="open=false" aria-label="Tutup">×</button>
+      </div>
+
+      <div class="mt-4 flex justify-end gap-2">
+        <button type="button" class="px-4 py-2 text-sm rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                @click="open=false" x-text="cancelText"></button>
+        <button type="button" class="px-4 py-2 text-sm rounded-lg bg-red-600 text-white hover:bg-red-700"
+                @click="confirm" x-text="confirmText"></button>
+      </div>
+    </div>
+  </div>
+  {{-- ===================== /MODAL KONFIRMASI ===================== --}}
 </div>

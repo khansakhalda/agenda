@@ -32,76 +32,17 @@ class Event extends Model
         'all_day',
         'color',
         'type',
-<<<<<<< HEAD
-=======
-        'is_starred',
 
-        // completed
+        // flags
+        'is_starred',
         'is_completed',
         'completed_at',
->>>>>>> ab25711ba86dbfadf661ddccb58f1f3e884e42b0
     ];
 
     /**
      * Casting kolom → tipe PHP/Carbon.
      */
     protected $casts = [
-<<<<<<< HEAD
-        'all_day' => 'boolean',
-    ];
-
-    public function participants()
-    {
-        return $this->belongsToMany(Participant::class, 'event_participants');
-    }
-
-    // Accessor untuk mendapatkan start_date_time sebagai Carbon instance
-    public function getStartDateTimeAttribute()
-    {
-        try {
-            if ($this->all_day) {
-                return Carbon::parse($this->start_date)->startOfDay();
-            }
-
-            if ($this->start_time) {
-                return Carbon::parse($this->start_date . ' ' . $this->start_time);
-            }
-
-            return Carbon::parse($this->start_date)->startOfDay();
-        } catch (\Exception $e) {
-            return Carbon::parse($this->start_date)->startOfDay();
-        }
-    }
-
-    // Accessor untuk mendapatkan end_date_time sebagai Carbon instance
-    public function getEndDateTimeAttribute()
-    {
-        try {
-            if ($this->all_day) {
-                return Carbon::parse($this->end_date)->endOfDay();
-            }
-
-            if ($this->end_time) {
-                return Carbon::parse($this->end_date . ' ' . $this->end_time);
-            }
-
-            return Carbon::parse($this->end_date)->endOfDay();
-        } catch (\Exception $e) {
-            return Carbon::parse($this->end_date)->endOfDay();
-        }
-    }
-
-    // Helper method untuk mendapatkan start_date sebagai Carbon
-    public function getStartDateCarbonAttribute()
-    {
-        return Carbon::parse($this->start_date);
-    }
-
-    // Helper method untuk mendapatkan end_date sebagai Carbon
-    public function getEndDateCarbonAttribute()
-    {
-        return Carbon::parse($this->end_date);
-=======
         'start_date'       => 'date',
         'end_date'         => 'date',
         'start_date_time'  => 'datetime',
@@ -113,19 +54,23 @@ class Event extends Model
     ];
 
     /**
+     * Relasi many-to-many ke peserta.
+     */
+    public function participants()
+    {
+        return $this->belongsToMany(Participant::class, 'event_participants');
+    }
+
+    /**
      * ACCESSORS
      * Prioritas:
-     * 1) kalau kolom gabungan ada isinya, gunakan itu,
-     * 2) kalau tidak, gabungkan dari kolom terpisah.
+     * 1) jika kolom gabungan ada nilainya → pakai itu
+     * 2) kalau tidak → gabungkan dari kolom terpisah
      */
     public function getStartDateTimeAttribute($value)
     {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
-        if (!is_null($value)) {
-            return Carbon::parse($value);
-        }
+        if ($value instanceof Carbon) return $value;
+        if (!is_null($value))         return Carbon::parse($value);
 
         if ($this->start_date) {
             $t = $this->start_time ?: '00:00:00';
@@ -137,12 +82,8 @@ class Event extends Model
 
     public function getEndDateTimeAttribute($value)
     {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
-        if (!is_null($value)) {
-            return Carbon::parse($value);
-        }
+        if ($value instanceof Carbon) return $value;
+        if (!is_null($value))         return Carbon::parse($value);
 
         if ($this->end_date) {
             $t = $this->end_time ?: '23:59:59';
@@ -150,12 +91,11 @@ class Event extends Model
         }
 
         return null;
->>>>>>> ab25711ba86dbfadf661ddccb58f1f3e884e42b0
     }
 
     /**
      * MUTATORS
-     * Jika ada yang set kolom gabungan, otomatis pecah ke kolom terpisah.
+     * Saat set kolom gabungan, otomatis pecah ke kolom terpisah.
      */
     public function setStartDateTimeAttribute($value): void
     {
@@ -180,10 +120,9 @@ class Event extends Model
     }
 
     /**
-     * Hook penyelaras:
-     * - sebelum menyimpan, kalau hanya kolom terpisah yang terisi, isi juga kolom gabungannya
-     *   (untuk kompatibilitas tampilan kalender lama),
-     * - jika all_day = true, paksa jam ke 00:00:00–23:59:59.
+     * Hook penyelaras sebelum simpan:
+     * - isi kolom gabungan bila hanya kolom terpisah yang ada
+     * - jika all_day = true, paksa jam 00:00:00–23:59:59
      */
     protected static function booted(): void
     {
