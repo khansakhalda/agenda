@@ -2,11 +2,26 @@
   use Carbon\Carbon;
   use Illuminate\Support\Collection;
   Carbon::setLocale('id');
+
+  /**
+   * Palet warna biru variatif (keluarga biru).
+   * Tiap item berisi kelas Tailwind untuk bg/border/text/ring/hover dan badge.
+   */
+  $PALETTE = [
+    ['bg'=>'bg-blue-50','bg2'=>'bg-blue-100','text'=>'text-blue-900','border'=>'border-blue-300','ring'=>'ring-blue-200','hoverBg'=>'hover:bg-blue-200','hoverBorder'=>'hover:border-blue-400','badgeBg'=>'bg-blue-50','badgeText'=>'text-blue-700','badgeBorder'=>'border-blue-300'],
+    ['bg'=>'bg-sky-50','bg2'=>'bg-sky-100','text'=>'text-sky-900','border'=>'border-sky-300','ring'=>'ring-sky-200','hoverBg'=>'hover:bg-sky-200','hoverBorder'=>'hover:border-sky-400','badgeBg'=>'bg-sky-50','badgeText'=>'text-sky-700','badgeBorder'=>'border-sky-300'],
+    ['bg'=>'bg-indigo-50','bg2'=>'bg-indigo-100','text'=>'text-indigo-900','border'=>'border-indigo-300','ring'=>'ring-indigo-200','hoverBg'=>'hover:bg-indigo-200','hoverBorder'=>'hover:border-indigo-400','badgeBg'=>'bg-indigo-50','badgeText'=>'text-indigo-700','badgeBorder'=>'border-indigo-300'],
+    ['bg'=>'bg-cyan-50','bg2'=>'bg-cyan-100','text'=>'text-cyan-900','border'=>'border-cyan-300','ring'=>'ring-cyan-200','hoverBg'=>'hover:bg-cyan-200','hoverBorder'=>'hover:border-cyan-400','badgeBg'=>'bg-cyan-50','badgeText'=>'text-cyan-700','badgeBorder'=>'border-cyan-300'],
+  ];
+  $pickColor = function($seed) use ($PALETTE) {
+      $idx = is_numeric($seed) ? intval($seed) : crc32((string)$seed);
+      return $PALETTE[$idx % count($PALETTE)];
+  };
 @endphp
 
-<div class="bg-white rounded-lg shadow overflow-hidden">
+<div class="bg-white rounded-lg shadow overflow-hidden" wire:poll.2s>
   @if ($calendarView === 'month')
-    {{-- ===== MONTH VIEW ===== --}}
+    {{-- ====================== MONTH VIEW ====================== --}}
     <div class="grid grid-cols-7 bg-gray-50">
       <div class="p-3 text-center font-medium text-gray-900 text-sm">Minggu</div>
       <div class="p-3 text-center font-medium text-gray-900 text-sm">Senin</div>
@@ -45,42 +60,25 @@
               {{ $currentDay->day }}
             </span>
 
-            {{-- badge jumlah event tanggal tsb --}}
             @if($dayEvents->isNotEmpty())
               <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                 {{ $dayEvents->count() }} acara
               </span>
             @else
-              <div class="opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg class="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                </svg>
+              <div class="opacity-0 group-hover:opacity-100 transition-opacity select-none pointer-events-none">
+                <span class="text-blue-600 text-lg leading-none font-semibold">+</span>
               </div>
             @endif
           </div>
 
           <div class="space-y-0.5">
             @foreach ($dayEvents->take(3) as $event)
-              @php
-                $eventClass = 'bg-blue-100 text-blue-800 border-blue-200';
-                $pc = $event->participants ? $event->participants->count() : 0;
-              @endphp
-              <div
-                wire:click.stop="openEditModal({{ $event->id }})"
-                class="px-1.5 py-0.5 rounded text-xs font-medium border {{ $eventClass }} cursor-pointer truncate hover:shadow-md transition-shadow z-10 relative flex items-center gap-1"
-                title="{{ $event->title }}"
-              >
-                <span class="truncate">
-                  {{ $event->all_day ? 'Sepanjang Hari' : ($event->start_time ? Carbon::parse($event->start_time)->format('H:i').' ' : '') }}
-                  {{ $event->title }}
-                </span>
-
-                @if($pc > 0)
-                  <span class="ml-auto text-[10px] px-1 rounded bg-white/70 border border-blue-200 text-blue-700 shrink-0">
-                    {{ $pc }} org
-                  </span>
-                @endif
-              </div>
+              @include('partials.event-pill', [
+                'event'            => $event,
+                'showTime'         => !$event->all_day,
+                'showParticipants' => true,
+                'class'            => ''
+              ])
             @endforeach
 
             @if ($dayEvents->count() > 3)
@@ -102,390 +100,418 @@
     </div>
 
   @elseif ($calendarView === 'week')
-    {{-- ===== WEEK VIEW ===== --}}
-    <div class="grid border-t border-l border-gray-200" style="grid-template-columns: 80px repeat(7, 1fr);">
-      {{-- header kiri --}}
-      <div class="grid-item-header bg-gray-50 border-b border-r border-gray-200">
-        <div class="h-24 p-2 text-center text-sm font-medium text-gray-900 flex items-end justify-center">
-          Sepanjang Hari
-        </div>
-      </div>
+    {{-- ====================== WEEK VIEW ====================== --}}
+    @php
+      $HOUR_HEIGHT    = 80;   // tinggi 1 jam (px)
+      $DAY_MINUTES    = 24 * 60;
+      $STACK_SHIFT    = 8;    // geser per tumpukan (px)
+      $LEFT_BASE_PCT  = 2;    // % margin kiri dasar
+      $WIDTH_BASE_PCT = 96;   // % lebar dasar
+    @endphp
 
-      {{-- header hari --}}
-      @php $currentDayInWeekHeader = Carbon::parse($this->currentDate)->startOfWeek(); @endphp
-      @for ($i = 0; $i < 7; $i++)
-        @php
-          $isToday = $currentDayInWeekHeader->isToday();
-          $dayClass = $isToday ? 'text-blue-600' : 'text-gray-900';
-          $headerBgClass = $isToday ? 'bg-blue-50' : 'bg-gray-50';
-        @endphp
-        <div class="grid-item-header {{ $headerBgClass }} border-b border-r border-gray-200">
-          <div class="h-24 p-2 text-center text-sm font-medium {{ $dayClass }} flex flex-col justify-end items-center">
-            <span class="font-bold text-xl">{{ $currentDayInWeekHeader->translatedFormat('D') }}</span>
-            <span class="text-3xl font-bold {{ $dayClass }}">{{ $currentDayInWeekHeader->day }}</span>
-            <span class="text-xs text-gray-500">{{ $currentDayInWeekHeader->translatedFormat('M') }}</span>
+    {{-- Header hari --}}
+    <div class="grid border-t border-l border-gray-200" style="grid-template-columns: 80px repeat(7, 1fr);">
+      <div class="bg-gray-50 border-b border-r border-gray-200"></div>
+      @php $d = Carbon::parse($this->currentDate)->startOfWeek(); @endphp
+      @for ($i=0; $i<7; $i++)
+        @php $isToday = $d->isToday(); @endphp
+        <div class="border-b border-r border-gray-200 {{ $isToday ? 'bg-blue-50' : 'bg-gray-50' }}">
+          <div class="h-24 p-2 text-center text-sm font-medium {{ $isToday ? 'text-blue-600' : 'text-gray-900' }} flex flex-col justify-end items-center">
+            <span class="font-bold text-xl">{{ $d->translatedFormat('D') }}</span>
+            <span class="text-3xl font-bold">{{ $d->day }}</span>
+            <span class="text-xs text-gray-500">{{ $d->translatedFormat('M') }}</span>
           </div>
         </div>
-        @php $currentDayInWeekHeader->addDay(); @endphp
+        @php $d->addDay(); @endphp
       @endfor
 
-      {{-- baris all day --}}
-      <div class="grid-item-time bg-gray-50 border-b border-r border-gray-200">
-        <div class="h-16 flex items-center justify-center text-xs text-gray-500">All Day</div>
+      {{-- All-day row --}}
+      <div class="bg-gray-50 border-b border-r border-gray-200 flex items-center justify-center text-xs text-gray-500">All Day</div>
+      @php $d = Carbon::parse($this->currentDate)->startOfWeek(); @endphp
+      @for ($i=0; $i<7; $i++)
+        @php
+          $dayEvents = $calendarData['events']->get($d->format('Y-m-d'), collect());
+          $allDay    = $dayEvents->filter(fn($e) => (bool)$e->all_day);
+        @endphp
+        <div class="border-b border-r border-gray-200 p-1.5 relative">
+          <div class="flex flex-wrap gap-1">
+            @foreach ($allDay->take(4) as $event)
+              @php
+                $pc = $event->participants ? $event->participants->count() : 0;
+                $c  = $pickColor($event->id ?? $event->title);
+              @endphp
+              <button
+                type="button"
+                wire:click.stop="openEditModal({{ $event->id }})"
+                class="px-2 py-1 rounded text-xs font-medium
+                       {{ $c['bg2'] }} {{ $c['text'] }} {{ $c['border'] }} {{ $c['ring'] }}
+                       {{ $c['hoverBg'] }} {{ $c['hoverBorder'] }} hover:shadow transition-colors duration-150
+                       flex items-center gap-1"
+              >
+                <span class="truncate max-w-[12rem]">{{ $event->title }}</span>
+                @if($pc > 0)
+                  <span class="text-[10px] leading-none px-1 py-0.5 rounded-full {{ $c['badgeBg'] }} {{ $c['badgeText'] }} {{ $c['badgeBorder'] }}">{{ $pc }}</span>
+                @endif
+              </button>
+            @endforeach
+            @if ($allDay->count() > 4)
+              <button
+                type="button"
+                wire:click.stop="openMoreEventsModal('{{ $d->format('Y-m-d') }}')"
+                class="text-xs text-gray-600 hover:text-blue-600"
+              >+{{ $allDay->count()-4 }} lainnya</button>
+            @endif
+          </div>
+        </div>
+        @php $d->addDay(); @endphp
+      @endfor
+
+      {{-- Kolom waktu kiri --}}
+      <div class="border-r border-gray-200 bg-gray-50" style="height: {{ $HOUR_HEIGHT*24 }}px;">
+        @for ($h=0; $h<24; $h++)
+          <div class="border-b border-gray-200 text-xs text-gray-500 flex items-start justify-end pr-2" style="height: {{ $HOUR_HEIGHT }}px;">
+            {{ sprintf('%02d:00', $h) }}
+          </div>
+        @endfor
       </div>
 
-      @php
-        $currentDayInAllDayRow = Carbon::parse($this->currentDate)->startOfWeek();
-        $maxVisibleAllDay = 3;
-      @endphp
-
-      @for ($j = 0; $j < 7; $j++)
+      {{-- 7 kolom hari --}}
+      @php $dayPtr = Carbon::parse($this->currentDate)->startOfWeek(); @endphp
+      @for ($col=0; $col<7; $col++)
         @php
-          $dayEvents    = $calendarData['events']->get($currentDayInAllDayRow->format('Y-m-d'), collect());
-          $allDayEvents = $dayEvents->filter(fn($event) => $event->all_day);
+          $colDay = $dayPtr->copy();
+
+          $dayAll = $calendarData['events']->get($colDay->format('Y-m-d'), collect());
+          $timed  = $dayAll->filter(fn($e) => !$e->all_day)
+                           ->sortBy(fn($e) => $e->start_time ? substr($e->start_time,0,5) : '00:00')
+                           ->values();
+
+          // Cluster overlap
+          $clusters = [];
+          $dayStart = $colDay->copy()->startOfDay();
+          $dayEnd   = $colDay->copy()->endOfDay();
+
+          foreach ($timed as $ev) {
+            $evStart = Carbon::parse(($ev->start_date instanceof Carbon ? $ev->start_date->format('Y-m-d') : $ev->start_date).' '.($ev->start_time ?? '00:00'));
+            $evEnd   = Carbon::parse(($ev->end_date   instanceof Carbon ? $ev->end_date->format('Y-m-d')   : $ev->end_date)  .' '.($ev->end_time   ?? '23:59'));
+            if ($evEnd->lt($dayStart) || $evStart->gt($dayEnd)) continue;
+            $evStart = $evStart->lt($dayStart) ? $dayStart->copy() : $evStart;
+            $evEnd   = $evEnd->gt($dayEnd)     ? $dayEnd->copy()   : $evEnd;
+
+            if (empty($clusters)) {
+              $clusters[] = [['e'=>$ev,'s'=>$evStart,'t'=>$evEnd]];
+            } else {
+              $last = count($clusters)-1;
+              $lastEndMax = collect($clusters[$last])->max(fn($x) => $x['t']);
+              if ($evStart->lt($lastEndMax)) $clusters[$last][] = ['e'=>$ev,'s'=>$evStart,'t'=>$evEnd];
+              else                           $clusters[]        = [['e'=>$ev,'s'=>$evStart,'t'=>$evEnd]];
+            }
+          }
+
+          // Items untuk render + durasi
+          $renderItems = [];
+          foreach ($clusters as $cluster) {
+            $stackSize = count($cluster);
+            foreach ($cluster as $stackIndex => $item) {
+              $minutesFromStart = $dayStart->diffInMinutes($item['s']);
+              $durMinutes       = max(15, $item['s']->diffInMinutes($item['t']));
+              $renderItems[] = [
+                'e'       => $item['e'],
+                'top'     => ($minutesFromStart / $DAY_MINUTES) * 100,
+                'height'  => ($durMinutes       / $DAY_MINUTES) * 100,
+                'dur'     => $durMinutes,
+                'stack'   => $stackIndex,
+                'stackSz' => $stackSize,
+              ];
+            }
+          }
         @endphp
-        <div
-          class="grid-item-cell h-16 border-b border-r border-gray-200 p-0.5 relative group cursor-pointer hover:bg-blue-50 transition-colors overflow-hidden"
-          wire:click.stop="openCreateModal(null, '{{ $currentDayInAllDayRow->format('Y-m-d') }}')"
-        >
-          <div class="space-y-0.5">
-            @foreach($allDayEvents->take($maxVisibleAllDay) as $index => $event)
-              @php
-                $eventClass = 'bg-blue-100 text-blue-800 border-blue-200';
-                $pc = $event->participants ? $event->participants->count() : 0;
-              @endphp
+
+        <div class="border-r border-gray-200 relative" style="height: {{ $HOUR_HEIGHT*24 }}px;">
+          {{-- Garis jam --}}
+          @for ($h=0; $h<24; $h++)
+            <div class="absolute left-0 right-0 border-b border-gray-200"
+                 style="top: {{ ($h/24)*100 }}%; height: 0;"></div>
+          @endfor
+
+          {{-- Area klik per jam --}}
+          @for ($h=0; $h<24; $h++)
+            <div
+              class="absolute left-0 right-0 group"
+              style="top: {{ ($h/24)*100 }}%; height: {{ (1/24)*100 }}%;"
+            >
               <div
-                wire:click.stop="openEditModal({{ $event->id }})"
-                class="px-1.5 py-0.5 rounded-sm text-xs font-medium border {{ $eventClass }} cursor-pointer truncate hover:shadow-md transition-shadow z-10 relative flex items-center gap-1"
-                title="{{ $event->title }}"
-              >
-                <span class="truncate">{{ $event->title }}</span>
-                @if($pc > 0)
-                  <span class="ml-auto text-[10px] px-1 rounded bg-white/70 border border-blue-200 text-blue-700 shrink-0">{{ $pc }}</span>
+                wire:click.stop="openCreateModal(null, '{{ $colDay->format('Y-m-d') }}', {{ $h }})"
+                class="absolute inset-0 hover:bg-blue-50/40 cursor-pointer"
+              ></div>
+              <span class="absolute top-1 right-1 text-blue-600 text-lg font-semibold opacity-0 group-hover:opacity-100 select-none pointer-events-none">+</span>
+            </div>
+          @endfor
+
+          {{-- Event --}}
+          @foreach ($renderItems as $ri)
+            @php
+              /** @var \App\Models\Event $ev */
+              $ev   = $ri['e'];
+              $pc   = $ev->participants ? $ev->participants->count() : 0;
+
+              $left = "calc({$LEFT_BASE_PCT}% + ".($ri['stack']*$STACK_SHIFT)."px)";
+              $width= "calc({$WIDTH_BASE_PCT}% - ".($ri['stack']*$STACK_SHIFT)."px)";
+
+              $s = Carbon::parse(($ev->start_date instanceof Carbon ? $ev->start_date->format('Y-m-d') : $ev->start_date).' '.($ev->start_time ?? '00:00'));
+              $t = Carbon::parse(($ev->end_date   instanceof Carbon ? $ev->end_date->format('Y-m-d')   : $ev->end_date)  .' '.($ev->end_time   ?? '23:59'));
+
+              // warna
+              $c = $pickColor($ev->id ?? ($ri['stack'] + $ri['top']*100));
+              // z-index: makin pendek durasi, makin depan
+              $z = 1000 - min(999, (int) $ri['dur']);
+              $z += (int) $ri['stack']; // tie-break
+            @endphp
+            <div
+              wire:click.stop="openEditModal({{ $ev->id }})"
+              class="absolute rounded-lg cursor-pointer px-2 py-1.5 text-xs
+                     {{ $c['bg2'] }} {{ $c['text'] }} {{ $c['border'] }} {{ $c['ring'] }}
+                     {{ $c['hoverBg'] }} {{ $c['hoverBorder'] }}
+                     shadow-sm transition-all duration-150 ease-out will-change-transform
+                     hover:-translate-y-0.5"
+              style="
+                top: calc({{ $ri['top'] }}% + 2px);
+                height: calc({{ $ri['height'] }}% - 4px);
+                left: {{ $left }};
+                width: {{ $width }};
+                min-height: 18px;
+                z-index: {{ $z }};
+              "
+              title="{{ $ev->title }}"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold truncate">{{ $ev->title }}</span>
+                @if ($pc > 0)
+                  <span class="text-[10px] rounded px-1 {{ $c['badgeBg'] }} {{ $c['badgeText'] }} {{ $c['badgeBorder'] }}">{{ $pc }}</span>
                 @endif
               </div>
-            @endforeach
-
-            @if ($allDayEvents->count() > $maxVisibleAllDay)
-              <div wire:click.stop="openMoreEventsModal(null, '{{ $currentDayInAllDayRow->format('Y-m-d') }}', null)"
-                   class="text-xs text-gray-500 px-1.5 pt-0.5 hover:text-blue-600 cursor-pointer z-10 relative">
-                +{{ $allDayEvents->count() - $maxVisibleAllDay }} lainnya
+              <div class="mt-0.5 text-[10px] {{ $c['text'] === 'text-indigo-900' ? 'text-indigo-800' : 'text-blue-800' }}">
+                {{ $s->format('H:i') }} – {{ $t->format('H:i') }}
               </div>
-            @endif
-          </div>
-
-          @if($allDayEvents->isEmpty())
-            <div class="opacity-0 group-hover:opacity-100 transition-opacity absolute inset-0 flex items-center justify-center">
-              <svg class="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-              </svg>
             </div>
-          @endif
+          @endforeach
+
+{{-- CURRENT TIME INDICATOR (WEEK) --}}
+@php $now = Carbon::now(); @endphp
+@if ($colDay->isSameDay($now))
+  @php
+    $dayStart = $colDay->copy()->startOfDay();
+    $mins     = max(0, min($DAY_MINUTES, $dayStart->diffInMinutes($now)));
+    $topPct   = ($mins / $DAY_MINUTES) * 100;
+  @endphp
+  <div class="absolute left-0 right-0 pointer-events-none z-[5000]" style="top: {{ $topPct }}%;">
+    <div class="h-0.5 bg-red-600 w-full"></div>
+    <div class="w-3 h-3 rounded-full bg-red-600 border-2 border-white absolute -left-1.5 -top-1.5 shadow"></div>
+  </div>
+@endif
+{{-- /CURRENT TIME INDICATOR (WEEK) --}}
+
         </div>
-        @php $currentDayInAllDayRow->addDay(); @endphp
+
+        @php $dayPtr->addDay(); @endphp
       @endfor
-
-      {{-- slot per jam --}}
-      @foreach (range(0, 23) as $hour)
-        <div class="grid-item-time bg-gray-50 border-b border-r border-gray-200">
-          <div class="h-20 flex items-center justify-center text-xs text-gray-500">
-            {{ sprintf('%02d:00', $hour) }}
-          </div>
-        </div>
-
-        @php
-          $currentDayInWeekRow = Carbon::parse($this->currentDate)->startOfWeek();
-          $eventsByDate        = $calendarData['events'];
-        @endphp
-
-        @for ($j = 0; $j < 7; $j++)
-          @php
-            $dayEvents    = $eventsByDate->get($currentDayInWeekRow->format('Y-m-d'), collect());
-            $cellDateTime = $currentDayInWeekRow->copy()->setHour($hour);
-
-            // Filter events overlap jam ini
-            $eventsInHour = $dayEvents->filter(function ($event) use ($cellDateTime) {
-              if ($event->all_day) return false;
-
-              $eventStart = $event->start_date_time
-                ? $event->start_date_time->copy()
-                : Carbon::parse(
-                    (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                    .' '.($event->start_time ?? '00:00:00')
-                  );
-
-              $eventEnd = $event->end_date_time
-                ? $event->end_date_time->copy()
-                : Carbon::parse(
-                    (($event->end_date instanceof Carbon) ? $event->end_date->format('Y-m-d') : $event->end_date)
-                    .' '.($event->end_time ?? '23:59:59')
-                  );
-
-              $slotStart = $cellDateTime->copy();
-              $slotEnd   = $cellDateTime->copy()->addHour();
-
-              return $eventStart->lt($slotEnd) && $eventEnd->gt($slotStart);
-            })->sortBy(function ($event) {
-              return $event->start_date_time
-                ? $event->start_date_time
-                : Carbon::parse(
-                    (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                    .' '.($event->start_time ?? '00:00:00')
-                  );
-            })->values();
-
-            $countEventsInHour = $eventsInHour->count();
-          @endphp
-
-          <div
-            class="grid-item-cell h-20 border-b border-r border-gray-200 p-0.5 relative group cursor-pointer hover:bg-blue-50 transition-colors overflow-hidden"
-            wire:click.stop="openCreateModal(null, '{{ $currentDayInWeekRow->format('Y-m-d') }}', {{ $hour }})"
-          >
-            <div class="relative h-full w-full">
-              @foreach ($eventsInHour->take(3) as $index => $event)
-                @php
-                  $eventClass = 'bg-blue-100 text-blue-800 border-blue-200';
-
-                  $eventStart = $event->start_date_time
-                    ? $event->start_date_time->copy()
-                    : Carbon::parse(
-                        (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                        .' '.($event->start_time ?? '00:00:00')
-                      );
-
-                  $eventEnd = $event->end_date_time
-                    ? $event->end_date_time->copy()
-                    : Carbon::parse(
-                        (($event->end_date instanceof Carbon) ? $event->end_date->format('Y-m-d') : $event->end_date)
-                        .' '.($event->end_time ?? '23:59:59')
-                      );
-
-                  $slotStart = $cellDateTime->copy();
-                  $slotEnd   = $cellDateTime->copy()->addHour();
-
-                  $topPercent = $eventStart->gte($slotStart) ? ($eventStart->diffInMinutes($slotStart) / 60) * 100 : 0;
-
-                  $eventStartInSlot = $eventStart->gte($slotStart) ? $eventStart : $slotStart;
-                  $eventEndInSlot   = $eventEnd->lte($slotEnd) ? $eventEnd : $slotEnd;
-                  $heightPercent    = ($eventStartInSlot->diffInMinutes($eventEndInSlot) / 60) * 100;
-                  if ($topPercent + $heightPercent > 100) $heightPercent = 100 - $topPercent;
-
-                  $visibleCount = min($countEventsInHour, 3);
-                  $eventWidth   = (90 / $visibleCount) - 2;
-                  $leftPercent  = ($index * (100 / $visibleCount)) + 1;
-
-                  $pc = $event->participants ? $event->participants->count() : 0;
-                @endphp
-
-                <div
-                  wire:click.stop="openEditModal({{ $event->id }})"
-                  class="absolute px-1 py-0.5 rounded text-xs font-medium border {{ $eventClass }} cursor-pointer hover:shadow-md transition-shadow z-10 overflow-hidden"
-                  style="
-                    top: calc({{ $topPercent }}%);
-                    left: {{ $leftPercent }}%;
-                    width: {{ $eventWidth }}%;
-                    height: {{ $heightPercent }}%;
-                    min-height: 6px;
-                  "
-                  title="{{ $event->title }} ({{ $eventStart->format('H:i') }} - {{ $eventEnd->format('H:i') }})"
-                >
-                  <div class="h-full flex items-center justify-between gap-1">
-                    <span class="truncate text-[11px] font-semibold leading-tight">{{ $event->title }}</span>
-                    @if($pc > 0 && $heightPercent >= 40)
-                      <span class="text-[10px] px-1 rounded bg-white/70 border border-blue-200 text-blue-700 shrink-0">{{ $pc }}</span>
-                    @endif
-                  </div>
-                </div>
-              @endforeach
-
-              @if ($eventsInHour->count() > 3)
-                <div
-                  wire:click.stop="openMoreEventsModal('{{ $currentDayInWeekRow->format('Y-m-d') }}', {{ $hour }})"
-                  class="absolute bottom-1 right-1 text-xs text-gray-500 bg-white px-1 rounded shadow hover:text-blue-600 cursor-pointer z-20">
-                  +{{ $eventsInHour->count() - 3 }} lainnya
-                </div>
-              @endif
-            </div>
-
-            @if ($countEventsInHour === 0)
-              <div class="opacity-0 group-hover:opacity-100 transition-opacity absolute inset-0 flex items-center justify-center">
-                <svg class="w-3 h-3 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                </svg>
-              </div>
-            @endif
-          </div>
-
-          @php $currentDayInWeekRow->addDay(); @endphp
-        @endfor
-      @endforeach
     </div>
 
   @else
-    {{-- ===== DAY VIEW ===== --}}
-    <div class="bg-white rounded-lg shadow overflow-hidden">
+    {{-- ====================== DAY VIEW ====================== --}}
+    @php
+      $HOUR_HEIGHT    = 80;
+      $DAY_MINUTES    = 24 * 60;
+      $STACK_SHIFT    = 8;
+      $LEFT_BASE_PCT  = 2;
+      $WIDTH_BASE_PCT = 96;
+      $today       = Carbon::parse($this->currentDate)->toDateString();
+      $eventsToday = \App\Models\Event::with('participants')
+        ->whereDate('start_date','<=',$today)
+        ->whereDate('end_date','>=',$today)
+        ->orderByDesc('all_day')
+        ->orderBy('start_time')
+        ->get();
+
+      $allDayEvents = $eventsToday->where('all_day', true);
+      $timedEvents  = $eventsToday->where('all_day', false)->values();
+    @endphp
+
+    <div class="bg-white rounded-lg shadow overflow-hidden" wire:poll.2s>
+      {{-- Header tanggal --}}
       <div class="bg-gray-50 border-b p-6 text-center">
         <div class="text-sm font-medium text-blue-600 uppercase">
           {{ Carbon::parse($this->currentDate)->locale('id')->translatedFormat('l, d F Y') }}
         </div>
       </div>
 
-      <div class="overflow-y-auto" style="max-height: 600px;">
-        @php
-          $todayEvents  = $calendarData['events']->get($this->currentDate, collect());
-          $allDayEvents = $todayEvents->filter(fn($event) => $event->all_day);
-        @endphp
-
-        @if ($allDayEvents->count() > 0)
-          <div class="border-b border-gray-200 p-4 bg-gray-50">
-            <h4 class="text-sm font-semibold text-gray-700 mb-2">Acara Sepanjang Hari:</h4>
-            <div class="space-y-1">
-              @foreach ($allDayEvents as $event)
-                @php $eventClass = 'bg-blue-100 text-blue-800 border-blue-200'; @endphp
-                <div
-                  wire:click.stop="openEditModal({{ $event->id }})"
-                  class="px-3 py-2 rounded text-sm font-medium border {{ $eventClass }} cursor-pointer truncate hover:shadow-md transition-shadow"
-                  title="{{ $event->title }}"
-                >
-                  {{ $event->title }}
-                </div>
-              @endforeach
-            </div>
+      {{-- All Day row --}}
+      <div class="grid border-b border-gray-200" style="grid-template-columns: 80px 1fr;">
+        <div class="bg-gray-50 border-r border-gray-200 flex items-center justify-center text-xs text-gray-500">All Day</div>
+        <div class="p-1.5">
+          <div class="flex flex-wrap gap-2">
+            @forelse ($allDayEvents as $event)
+              @php
+                $pc = $event->participants ? $event->participants->count() : 0;
+                $c  = $pickColor($event->id ?? $event->title);
+              @endphp
+              <button
+                type="button"
+                wire:click.stop="openEditModal({{ $event->id }})"
+                class="px-3 py-1.5 rounded-md text-sm font-medium
+                       {{ $c['bg2'] }} {{ $c['text'] }} {{ $c['border'] }} {{ $c['ring'] }}
+                       {{ $c['hoverBg'] }} {{ $c['hoverBorder'] }} hover:shadow transition-colors duration-150
+                       flex items-center gap-2"
+              >
+                <span class="truncate max-w-[16rem]">{{ $event->title }}</span>
+                @if($pc > 0)
+                  <span class="text-[10px] leading-none px-1.5 py-0.5 rounded-full {{ $c['badgeBg'] }} {{ $c['badgeText'] }} {{ $c['badgeBorder'] }}">{{ $pc }}</span>
+                @endif
+              </button>
+            @empty
+            @endforelse
           </div>
-        @endif
+        </div>
+      </div>
 
-        @for ($hour = 0; $hour < 24; $hour++)
+      {{-- Grid 24 jam + event --}}
+      <div class="relative" style="height: {{ $HOUR_HEIGHT*24 }}px;">
+        {{-- kolom waktu kiri --}}
+        <div class="absolute left-0 top-0 bottom-0 w-20 bg-gray-50 border-r border-gray-200 z-[1]">
+          @for ($h=0; $h<24; $h++)
+            <div class="border-b border-gray-200 text-xs text-gray-500 flex items-start justify-end pr-2" style="height: {{ $HOUR_HEIGHT }}px;">
+              {{ sprintf('%02d:00', $h) }}
+            </div>
+          @endfor
+        </div>
+
+        {{-- grid garis jam + area event --}}
+        <div class="absolute left-20 right-0 top-0 bottom-0">
+          @for ($h=0; $h<24; $h++)
+            <div class="absolute left-0 right-0 border-b border-gray-200" style="top: {{ ($h/24)*100 }}%; height: 0;"></div>
+          @endfor
+
+          {{-- area klik per jam --}}
+          @for ($h=0; $h<24; $h++)
+            <div
+              class="absolute left-0 right-0 group"
+              style="top: {{ ($h/24)*100 }}%; height: {{ (1/24)*100 }}%;"
+            >
+              <div
+                wire:click.stop="openCreateModal(null, '{{ $this->currentDate }}', {{ $h }})"
+                class="absolute inset-0 hover:bg-blue-50/40 cursor-pointer"
+              ></div>
+              <span class="absolute top-1 right-1 text-blue-600 text-lg font-semibold opacity-0 group-hover:opacity-100 select-none pointer-events-none">+</span>
+            </div>
+          @endfor
+
+{{-- CURRENT TIME INDICATOR (DAY) --}}
+@php
+  $now = Carbon::now();
+  $currentDateObj = Carbon::parse($this->currentDate);
+@endphp
+@if ($currentDateObj->isSameDay($now))
+  @php
+    $dayStart = $currentDateObj->copy()->startOfDay();
+    $mins     = max(0, min($DAY_MINUTES, $dayStart->diffInMinutes($now)));
+    $topPct   = ($mins / $DAY_MINUTES) * 100;
+  @endphp
+  <div class="absolute left-0 right-0 pointer-events-none z-[5000]" style="top: {{ $topPct }}%;">
+    <div class="h-0.5 bg-red-600 w-full"></div>
+    <div class="w-3 h-3 rounded-full bg-red-600 border-2 border-white absolute -left-1.5 -top-1.5 shadow"></div>
+  </div>
+@endif
+{{-- /CURRENT TIME INDICATOR (DAY) --}}
+
+          {{-- cluster & render: MODE TUMPUK --}}
           @php
-            $currentHourStart = Carbon::parse($this->currentDate)->copy()->setHour($hour)->startOfHour();
-            $currentHourEnd   = $currentHourStart->copy()->addHour();
+            $dayStart  = Carbon::parse($this->currentDate)->startOfDay();
+            $dayEnd    = Carbon::parse($this->currentDate)->endOfDay();
+            $sorted    = $timedEvents->sortBy(fn($e) => $e->start_time ? substr($e->start_time,0,5) : '00:00')->values();
 
-            $eventsInHour = $todayEvents->filter(function ($event) use ($currentHourStart, $currentHourEnd) {
-              if ($event->all_day) return false;
+            $clusters  = [];
+            foreach ($sorted as $ev) {
+              $evStart = Carbon::parse(($ev->start_date instanceof Carbon ? $ev->start_date->format('Y-m-d') : $ev->start_date).' '.($ev->start_time ?? '00:00'));
+              $evEnd   = Carbon::parse(($ev->end_date   instanceof Carbon ? $ev->end_date->format('Y-m-d')   : $ev->end_date)  .' '.($ev->end_time   ?? '23:59'));
+              if ($evEnd->lt($dayStart) || $evStart->gt($dayEnd)) continue;
+              $evStart = $evStart->lt($dayStart) ? $dayStart->copy() : $evStart;
+              $evEnd   = $evEnd->gt($dayEnd)     ? $dayEnd->copy()   : $evEnd;
 
-              $eventStart = $event->start_date_time
-                ? $event->start_date_time->copy()
-                : Carbon::parse(
-                    (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                    .' '.($event->start_time ?? '00:00:00')
-                  );
+              if (empty($clusters)) {
+                $clusters[] = [['e'=>$ev,'s'=>$evStart,'t'=>$evEnd]];
+              } else {
+                $last = count($clusters)-1;
+                $lastEndMax = collect($clusters[$last])->max(fn($x) => $x['t']);
+                if ($evStart->lt($lastEndMax)) $clusters[$last][] = ['e'=>$ev,'s'=>$evStart,'t'=>$evEnd];
+                else                           $clusters[]        = [['e'=>$ev,'s'=>$evStart,'t'=>$evEnd]];
+              }
+            }
 
-              $eventEnd = $event->end_date_time
-                ? $event->end_date_time->copy()
-                : Carbon::parse(
-                    (($event->end_date instanceof Carbon) ? $event->end_date->format('Y-m-d') : $event->end_date)
-                    .' '.($event->end_time ?? '23:59:59')
-                  );
-
-              return $eventStart->lt($currentHourEnd) && $eventEnd->gt($currentHourStart);
-            })->sortBy(function ($event) {
-              return $event->start_date_time
-                ? $event->start_date_time
-                : Carbon::parse(
-                    (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                    .' '.($event->start_time ?? '00:00:00')
-                  );
-            });
-
-            $countEventsInHour = $eventsInHour->count();
+            $renderItems = [];
+            foreach ($clusters as $cluster) {
+              $stackSize = count($cluster);
+              foreach ($cluster as $stackIndex => $item) {
+                $minutesFromStart = $dayStart->diffInMinutes($item['s']);
+                $durMinutes       = max(15, $item['s']->diffInMinutes($item['t']));
+                $renderItems[] = [
+                  'e'       => $item['e'],
+                  'top'     => ($minutesFromStart / $DAY_MINUTES) * 100,
+                  'height'  => ($durMinutes       / $DAY_MINUTES) * 100,
+                  'dur'     => $durMinutes,
+                  'stack'   => $stackIndex,
+                  'stackSz' => $stackSize,
+                ];
+              }
+            }
           @endphp
 
-          <div class="flex border-b border-gray-200 relative h-24">
-            <div class="w-20 p-4 text-right text-xs text-gray-500 bg-gray-50 border-r">
-              {{ sprintf('%02d:00', $hour) }}
-            </div>
+          @foreach ($renderItems as $ri)
+            @php
+              /** @var \App\Models\Event $event */
+              $event = $ri['e'];
+              $pc    = $event->participants ? $event->participants->count() : 0;
 
-            <div class="flex-1 relative">
-              @foreach ($eventsInHour->take(3) as $idx => $event)
-                @php
-                  $eventStart = $event->start_date_time
-                    ? $event->start_date_time->copy()
-                    : Carbon::parse(
-                        (($event->start_date instanceof Carbon) ? $event->start_date->format('Y-m-d') : $event->start_date)
-                        .' '.($event->start_time ?? '00:00:00')
-                      );
+              $left  = "calc({$LEFT_BASE_PCT}% + ".($ri['stack']*$STACK_SHIFT)."px)";
+              $width = "calc({$WIDTH_BASE_PCT}% - ".($ri['stack']*$STACK_SHIFT)."px)";
 
-                  $eventEnd = $event->end_date_time
-                    ? $event->end_date_time->copy()
-                    : Carbon::parse(
-                        (($event->end_date instanceof Carbon) ? $event->end_date->format('Y-m-d') : $event->end_date)
-                        .' '.($event->end_time ?? '23:59:59')
-                      );
+              $s = Carbon::parse(($event->start_date instanceof Carbon ? $event->start_date->format('Y-m-d') : $event->start_date).' '.($event->start_time ?? '00:00'));
+              $t = Carbon::parse(($event->end_date   instanceof Carbon ? $event->end_date->format('Y-m-d')   : $event->end_date)  .' '.($event->end_time   ?? '23:59'));
 
-                  $slotStart = $currentHourStart;
-                  $slotEnd   = $currentHourEnd;
+              // warna
+              $c = $pickColor($event->id ?? ($ri['stack'] + $ri['top']*100));
+              // z-index: makin pendek durasi, makin depan
+              $z = 1000 - min(999, (int) $ri['dur']);
+              $z += (int) $ri['stack'];
+            @endphp
 
-                  $topPercent = max(0, $eventStart->greaterThan($slotStart) ? $eventStart->diffInMinutes($slotStart) / 60 * 100 : 0);
-
-                  $eventStartInSlot = $eventStart->greaterThan($slotStart) ? $eventStart : $slotStart;
-                  $eventEndInSlot   = $eventEnd->lessThan($slotEnd) ? $eventEnd : $slotEnd;
-                  $durationInSlot   = $eventStartInSlot->diffInMinutes($eventEndInSlot);
-                  $heightPercent    = ($durationInSlot / 60) * 100;
-
-                  $maxHeight      = 100 - $topPercent;
-                  $heightPercent  = min($heightPercent, $maxHeight);
-                  $heightPercent  = max($heightPercent, 15);
-
-                  $visibleCount = min($countEventsInHour, 3);
-                  $eventWidth   = 95 / $visibleCount;
-                  $leftPercent  = $idx * (100 / $visibleCount);
-
-                  $pc = $event->participants ? $event->participants->count() : 0;
-                @endphp
-
-                <div
-                  wire:click.stop="openEditModal({{ $event->id }})"
-                  class="absolute border rounded bg-blue-100 text-blue-800 border-blue-200 cursor-pointer hover:shadow-md transition-shadow px-3 py-2 text-sm z-10"
-                  style="top: calc({{ $topPercent }}% + 2px);
-                         left: {{ $leftPercent }}%;
-                         width: {{ $eventWidth }}%;
-                         height: calc({{ $heightPercent }}% - 10px);
-                         margin-top: 3px;
-                         margin-left: 5px;"
-                >
-                  <div class="flex justify-between items-start">
-                    <span class="truncate font-semibold">{{ $event->title }}</span>
-                    <span class="ml-2 whitespace-nowrap text-gray-700 font-medium">
-                      {{ $eventStart->format('H:i') }} - {{ $eventEnd->format('H:i') }}
-                    </span>
-                  </div>
-
-                  @if ($event->description)
-                    <div class="mt-1 text-gray-700">{{ $event->description }}</div>
-                  @endif
-
-                  @if ($event->participants && $event->participants->count() > 0)
-                    <div class="flex flex-wrap gap-1 mt-2 text-xs text-gray-800">
-                      @foreach($event->participants->take(3) as $p)
-                        <div class="px-2 py-0.5 bg-gray-200 rounded-md">{{ $p->name }}</div>
-                      @endforeach
-                      @if($event->participants->count() > 3)
-                        <span class="text-blue-600 font-medium">+{{ $event->participants->count() - 3 }}</span>
-                      @endif
-                    </div>
-                  @endif
-                </div>
-              @endforeach
-
-              @if ($eventsInHour->count() > 3)
-                <div
-                  wire:click.stop="openMoreEventsModal('{{ $this->currentDate }}', {{ $hour }})"
-                  class="absolute bottom-3 right-1 text-xs text-gray-500 bg-white px-1 rounded shadow hover:text-blue-600 cursor-pointer z-20">
-                  +{{ $eventsInHour->count() - 3 }} lainnya
+            <div
+              wire:click.stop="openEditModal({{ $event->id }})"
+              class="absolute rounded-lg cursor-pointer px-3 py-2 text-sm
+                     {{ $c['bg2'] }} {{ $c['text'] }} {{ $c['border'] }} {{ $c['ring'] }}
+                     {{ $c['hoverBg'] }} {{ $c['hoverBorder'] }}
+                     shadow-sm transition-all duration-150 hover:-translate-y-0.5"
+              style="
+                left: {{ $left }};
+                width: {{ $width }};
+                top: calc({{ $ri['top'] }}% + 2px);
+                height: calc({{ $ri['height'] }}% - 4px);
+                min-height: 22px;
+                z-index: {{ $z }};
+              "
+              title="{{ $event->title }}"
+            >
+              <div class="flex justify-between items-start gap-2">
+                <span class="font-semibold truncate">{{ $event->title }}</span>
+                <span class="ml-2 shrink-0 text-xs {{ $c['text'] === 'text-indigo-900' ? 'text-indigo-800' : 'text-blue-800' }}">{{ $s->format('H:i') }} – {{ $t->format('H:i') }}</span>
+              </div>
+              @if ($pc > 0)
+                <div class="mt-1 text-[11px]">
+                  <span class="rounded px-1 {{ $c['badgeBg'] }} {{ $c['badgeText'] }} {{ $c['badgeBorder'] }}">{{ $pc }}</span>
                 </div>
               @endif
-
-              <div
-                wire:click.stop="openCreateModal(null, '{{ $this->currentDate }}', {{ $hour }})"
-                class="absolute inset-0 hover:bg-blue-50 cursor-pointer transition-opacity"
-                style="z-index:0;"
-              >
-                <div class="flex items-center justify-center h-full opacity-0 hover:opacity-100 pointer-events-none">
-                  <span class="text-xs text-gray-400">Klik untuk menambah acara</span>
-                </div>
-              </div>
             </div>
-          </div>
-        @endfor
+          @endforeach
+        </div>
       </div>
     </div>
   @endif

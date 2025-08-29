@@ -1,4 +1,3 @@
-{{-- resources/views/partials/sort-dropdown.blade.php --}}
 <div x-data="{ open: false }" class="relative">
   <button @click="open = !open" class="text-gray-600 hover:text-black focus:outline-none" aria-label="Urutkan">
     <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
@@ -22,7 +21,6 @@
     @php
       $sortOptions = [
         'manual'  => 'Urutan saya',
-        'date'    => 'Tanggal',
         'starred' => 'Berbintang terbaru',
         'title'   => 'Judul',
       ];

@@ -1,4 +1,3 @@
-{{-- resources/views/partials/header.blade.php --}}
 @php
     \Carbon\Carbon::setLocale('id');
 @endphp
@@ -52,7 +51,7 @@
         Tugas
       </a>
 
-      <button wire:click="openCreateModal" wire:loading.attr="disabled" wire:target="openCreateModal,createEvent"
+      <button type="button" wire:click="openCreateModal" wire:loading.attr="disabled" wire:target="openCreateModal,createEvent"
         class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
         <span wire:loading.remove wire:target="openCreateModal">Buat Acara</span>
         <span wire:loading wire:target="openCreateModal">Memuat...</span>

@@ -1,23 +1,31 @@
-{{-- resources/views/livewire/calendar-admin.blade.php --}}
-<div wire:poll class="min-h-screen bg-gray-50">
+<div class="min-h-screen bg-gray-50">
   <div class="flex">
-    {{-- Sidebar Admin --}}
+    {{-- ================= Sidebar Admin ================= --}}
     @include('partials.sidebar')
 
-    {{-- Main Calendar Area --}}
+    {{-- ================= Main Calendar Area ================= --}}
     <div class="flex-1 p-6">
 
-      {{-- Header (Hari Ini, navigasi, Bulan/Minggu/Hari, Ekspor, Tasks, Buat Acara, Profil) --}}
+      {{-- Header (Hari Ini, Navigasi, Bulan/Minggu/Hari, Ekspor, Tasks, Buat Acara, Profil) --}}
       @include('partials.header')
 
-      {{-- Kalender yang diinginkan (versi “atas”) --}}
+      {{-- Kalender (grid bulanan / mingguan / harian) --}}
       @include('partials.calendar-grid')
 
-      {{-- ✅ Tidak ada kalender kedua di bawah ini --}}
+{{-- MODALS --}}
+<div wire:key="modal-create">
+  @include('partials.modal-create')
+</div>
 
-      {{-- Modals --}}
-      @include('partials.modal-create')
-      @include('partials.modal-edit')
+<div wire:key="modal-edit">
+  @include('partials.modal-edit')
+</div>
+
+<div wire:key="modal-delete-confirm">
+  @include('partials.modal-delete-confirm')
+</div>
+{{-- /MODALS --}}
+
 
       {{-- Toast/Notifikasi (opsional) --}}
       @includeWhen(View::exists('partials.toast'), 'partials.toast')

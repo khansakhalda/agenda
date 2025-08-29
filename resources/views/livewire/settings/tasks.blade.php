@@ -1,4 +1,3 @@
-{{-- resources/views/livewire/settings/tasks.blade.php --}}
 <div wire:poll class="min-h-screen bg-gray-50">
   <div class="flex min-h-screen">
 
@@ -10,20 +9,33 @@
       <div class="flex justify-between items-center mb-5">
         <h2 class="text-xl font-semibold leading-tight text-gray-800">Daftar Tugas</h2>
 
-        {{-- Buat Acara + Sort --}}
-        <div class="flex items-center space-x-4">
-          <button
-            wire:click="openCreateModal"
-            wire:loading.attr="disabled"
-            wire:target="openCreateModal,createEvent"
-            class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
-            <span wire:loading.remove wire:target="openCreateModal">Buat Acara</span>
-            <span wire:loading wire:target="openCreateModal">Memuat...</span>
-          </button>
+{{-- Buat Tugas + Sort --}}
+<div class="flex items-center space-x-4">
+  {{-- Tombol ke Calendar Admin (disamakan dengan Buat Tugas) --}}
+  <a
+    href="{{ route('calendar.admin') }}"
+    wire:navigate
+    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+  >
+    <span class="inline-flex items-center gap-2">
+      Calendar
+    </span>
+  </a>
 
-          {{-- Dropdown Urutkan (Alpine) --}}
-          @include('partials.sort-dropdown')
-        </div>
+  {{-- Tombol Buat Tugas (tetap) --}}
+  <button
+    wire:click="openCreateModal"
+    wire:loading.attr="disabled"
+    wire:target="openCreateModal,createTask"
+    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+    <span wire:loading.remove wire:target="openCreateModal">Buat Tugas</span>
+    <span wire:loading wire:target="openCreateModal">Memuat...</span>
+  </button>
+
+  {{-- Dropdown Urutkan (tetap) --}}
+  @include('partials.sort-dropdown')
+</div>
+
       </div>
 
       {{-- ======================= TOAST NOTIFIKASI (INDONESIA) ======================= --}}
@@ -46,7 +58,6 @@
             this.t = setTimeout(() => this.show = false, this.duration);
           },
           init(){
-            // Dukung flashMessage dari server (bisa string atau array {type,title,text})
             @if ($flashMessage)
               @if (is_array($flashMessage))
                 this.fire(@js($flashMessage));
@@ -54,8 +65,6 @@
                 this.fire({ type:'success', title:'Berhasil', text:@js($flashMessage) });
               @endif
             @endif
-
-            // Dukung event Livewire/Alpine: window.dispatchEvent(new CustomEvent('toast', {detail:{...}}))
             window.addEventListener('toast', e => this.fire(e.detail || {}));
           }
         }"
@@ -114,33 +123,30 @@
       </div>
       {{-- ===================== /TOAST ===================== --}}
 
-      {{-- Task List --}}
-      @if ($sortBy === 'date' || $sortBy === 'starred')
+      {{-- Task List (tanpa konsep waktu) --}}
+      @if ($sortBy === 'starred')
+        @php
+          $starred = $tasks->filter(fn($t) => (bool)($t->is_starred ?? false));
+          $nonstar = $tasks->reject(fn($t) => (bool)($t->is_starred ?? false));
+        @endphp
+
         <div class="mb-8">
-          <h3 class="text-gray-700 font-semibold text-lg mb-4">
-            {{ $sortBy === 'starred' ? 'Berbintang' : 'Segera' }}
-          </h3>
+          <h3 class="text-gray-700 font-semibold text-lg mb-4">Berbintang</h3>
           <div class="flex flex-col space-y-4">
-            @forelse ($soonTasks as $task)
+            @forelse ($starred as $task)
               @include('livewire.settings.task-card', ['task' => $task])
             @empty
-              <p class="text-gray-500 italic">
-                {{ $sortBy === 'starred' ? 'Belum ada tugas berbintang.' : 'Tidak ada tugas mendatang.' }}
-              </p>
+              <p class="text-gray-500 italic">Belum ada tugas berbintang.</p>
             @endforelse
           </div>
         </div>
 
         <div class="mb-10 space-y-4">
-          <h3 class="text-gray-700 font-semibold text-lg mb-4">
-            {{ $sortBy === 'starred' ? 'Tidak berbintang' : 'Lampau' }}
-          </h3>
-          @forelse ($pastTasks as $task)
+          <h3 class="text-gray-700 font-semibold text-lg mb-4">Tidak berbintang</h3>
+          @forelse ($nonstar as $task)
             @include('livewire.settings.task-card', ['task' => $task])
           @empty
-            <p class="text-gray-500 italic">
-              {{ $sortBy === 'starred' ? 'Tidak ada tugas non-bintang.' : 'Tidak ada tugas lampau.' }}
-            </p>
+            <p class="text-gray-500 italic">Tidak ada tugas non-bintang.</p>
           @endforelse
         </div>
       @else
@@ -156,8 +162,172 @@
       {{-- Bagian: Selesai --}}
       @include('partials.task-completed')
 
-      {{-- Modal Buat Acara (pakai partial yang sama dengan calendar admin) --}}
-      @include('partials.modal-create')
+{{-- ================== Modal Buat Tugas (khusus halaman Tasks) ================== --}}
+@if ($showCreateModal)
+  <div
+    x-data="{}"
+    x-cloak
+    x-transition.opacity
+    class="fixed inset-0 z-[9998] flex items-center justify-center"
+    aria-modal="true" role="dialog">
+
+    {{-- backdrop --}}
+    <div class="absolute inset-0 bg-black/40" @click="$wire.closeCreateModal()"></div>
+
+    {{-- container (disamakan dgn modal acara) --}}
+    <div class="relative z-[9999] w-[92vw] max-w-lg rounded-2xl bg-white shadow-2xl ring-1 ring-black/5">
+      {{-- Header --}}
+      <div class="flex items-center justify-between px-5 py-4 border-b">
+        <h3 class="text-base font-semibold text-gray-900">Buat Tugas</h3>
+        <button class="h-8 w-8 grid place-items-center rounded-md text-slate-500 hover:bg-slate-100"
+                @click="$wire.closeCreateModal()" aria-label="Tutup">×</button>
+      </div>
+
+      {{-- Body (scrollable seperti modal acara) --}}
+      <div class="px-5 py-4 max-h-[75vh] overflow-y-auto">
+        <form wire:submit.prevent="createTask" class="space-y-4">
+          {{-- Judul --}}
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Judul Tugas</label>
+            <input type="text" wire:model.defer="newTask.title" placeholder="Judul tugas"
+                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+            @error('newTask.title') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+          </div>
+
+          {{-- Deskripsi --}}
+          <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Deskripsi</label>
+            <textarea rows="4" wire:model.defer="newTask.description" placeholder="Deskripsi tugas"
+                      class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+            @error('newTask.description') <span class="text-red-500 text-xs">{{ $message }}</span> @enderror
+          </div>
+
+{{-- Partisipan (disamakan dengan modal acara) --}}
+<div
+  x-data="{
+    // query diketik user
+    query: '',
+    // saran dropdown
+    sug: [],
+    // ghost suggestion satu kandidat terdepan
+    suggestion: '',
+    lastQuery: '',
+    // daftar yg terpilih — tetap pakai payload newTask.participants
+    picked: @js($newTask['participants'] ?? []),
+
+    async updateSuggestion(){
+      const q = (this.query||'').trim();
+      this.lastQuery = q;
+
+      // ghost (first suggestion)
+      if(q){
+        const res = await $wire.getFirstSuggestion(q);
+        if(this.lastQuery === q) this.suggestion = res || '';
+      } else {
+        this.suggestion = '';
+      }
+
+      // dropdown list
+      if(q){
+        this.sug = await $wire.searchCalendarParticipants(q);
+      } else {
+        this.sug = [];
+      }
+    },
+
+    pick(p){
+      // p bisa {id,name} atau {name}
+      const key = (x) => (x.id ?? 'name:'+x.name);
+      if(!this.picked.find(x => key(x) === key(p))){
+        this.picked.push({ id: p.id ?? null, name: p.name });
+        $wire.set('newTask.participants', this.picked);
+      }
+      this.query=''; this.suggestion=''; this.sug=[];
+    },
+
+    enter(){
+      const name = (this.query||'').trim();
+      if(!name) return;
+      this.pick({ name });
+    },
+
+    acceptGhost(){
+      if(this.suggestion && this.suggestion.startsWith(this.query)){
+        this.query = this.suggestion; this.suggestion='';
+      }
+    },
+
+    remove(i){
+      this.picked.splice(i,1);
+      $wire.set('newTask.participants', this.picked);
+    }
+  }"
+  x-init="$watch('query', () => updateSuggestion())"
+  class="mt-2 relative"
+>
+  <label class="block text-sm font-medium text-gray-700 mb-1">Partisipan</label>
+
+  {{-- Input + ghost suggestion --}}
+  <div class="relative">
+    <input type="text"
+           x-model="query"
+           @keydown.tab.prevent="acceptGhost()"
+           @keydown.enter.prevent="enter()"
+           placeholder="Ketik nama partisipan…"
+           class="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+
+    {{-- Ghost text (di atas input, abu-abu) --}}
+    <div class="absolute top-0 left-0 px-3 py-2 text-gray-400 pointer-events-none">
+      <template x-if="suggestion && suggestion !== query">
+        <span x-text="query + suggestion.substring(query.length)"></span>
+      </template>
+    </div>
+
+    {{-- Dropdown suggestions --}}
+    <div class="absolute z-10 mt-1 w-full bg-white border rounded-lg shadow max-h-56 overflow-y-auto"
+         x-show="sug.length">
+      <template x-for="p in sug" :key="p.id ?? p.name">
+        <button type="button" class="w-full text-left px-3 py-2 hover:bg-slate-50"
+                @click="pick(p)" x-text="p.name"></button>
+      </template>
+    </div>
+  </div>
+<p id="help-partisipan" class="mt-2 text-xs text-slate-500">
+  Jika belum ada, tekan <strong>Enter</strong> untuk menambah.
+</p>
+  {{-- Chips terpilih (DI BAWAH input, sama seperti modal acara) --}}
+  <div class="flex flex-wrap gap-2 mt-3">
+    <template x-for="(p,i) in picked" :key="(p.id||p.name)+'-'+i">
+      <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs flex items-center">
+        <span x-text="p.name"></span>
+        <button type="button" class="ml-2 text-red-500 hover:text-red-700" @click="remove(i)">×</button>
+      </span>
+    </template>
+  </div>
+</div>
+
+
+          {{-- Footer (diseragamkan) --}}
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" @click="$wire.closeCreateModal()"
+                    class="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200">
+              Batal
+            </button>
+            <button type="submit"
+                    wire:loading.attr="disabled"
+                    wire:target="createTask"
+                    class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50">
+              <span wire:loading.remove wire:target="createTask">Buat</span>
+              <span wire:loading wire:target="createTask">Menyimpan...</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+@endif
+{{-- ================== /Modal Buat Tugas ================== --}}
+
     </div>
   </div>
 

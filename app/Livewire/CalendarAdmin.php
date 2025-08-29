@@ -11,6 +11,14 @@ class CalendarAdmin extends Component
 {
     protected $layout = 'layouts.app';
 
+    protected $casts = [
+        'showCreateModal'   => 'boolean',
+        'showEditModal'     => 'boolean',
+        'showDeleteConfirm' => 'boolean',
+        'allDay'            => 'boolean',
+        'fromMore'          => 'boolean',
+    ];
+
     // Calendar state
     public $currentMonth;
     public $currentYear;
@@ -25,8 +33,12 @@ class CalendarAdmin extends Component
 
     // Modal state
     public $showCreateModal = false;
-    public $showEditModal = false;
-    public $isSubmitting = false;
+    public $showEditModal   = false;
+    public $isSubmitting    = false;
+
+    // NEW: modal konfirmasi hapus
+    public $showDeleteConfirm = false;
+    public $deletingEventId   = null;
 
     // Event form
     public $title = '';
@@ -47,15 +59,18 @@ class CalendarAdmin extends Component
     public bool $fromMore = false;
     public $currentEvent = null;
 
-    // Participants management (sidebar + modal)
+    // Participants (sidebar + modal)
     public string $participantName = '';
     public $editingParticipantId = null;
     public string $editingParticipantName = '';
     public $eventParticipants = [];
     public $newEventParticipant = '';
     public $selectedEvent = null;
-    public $searchParticipant = '';
-    public $selectedParticipants = [];
+
+    // Autocomplete di modal
+    public string $searchParticipant = '';
+    public array  $selectedParticipants = [];
+    public array  $searchResults = [];
 
     protected $rules = [
         'title'       => 'required|string|max:255',
@@ -74,6 +89,12 @@ class CalendarAdmin extends Component
         $this->currentYear       = (int) Carbon::parse($this->currentDate)->year;
         $this->miniCalendarMonth = $this->currentMonth;
         $this->miniCalendarYear  = $this->currentYear;
+
+        $this->eventsInCurrentModalSlot = collect();
+
+        $this->showCreateModal   = false;
+        $this->showEditModal     = false;
+        $this->showDeleteConfirm = false;
     }
 
     protected $queryString = [
@@ -102,7 +123,7 @@ class CalendarAdmin extends Component
         return $times;
     }
 
-    /* ===== Mini Calendar Methods (sinkron dgn partial) ===== */
+    /* ===== Mini Calendar ===== */
     public function prevMiniMonth()
     {
         $miniDate = Carbon::create($this->miniCalendarYear, $this->miniCalendarMonth, 1)->subMonth();
@@ -135,7 +156,7 @@ class CalendarAdmin extends Component
         $this->dispatch('refreshCalendar');
     }
 
-    /* ===== Calendar Navigation ===== */
+    /* ===== Navigation ===== */
     public function previousPeriod()
     {
         $carbonDate = Carbon::parse($this->currentDate);
@@ -181,7 +202,7 @@ class CalendarAdmin extends Component
     public function goToNext()     { $this->nextPeriod(); }
     public function setView($view) { $this->calendarView = $view; }
 
-    /* ===== Event Creation Modal ===== */
+    /* ===== Create Modal ===== */
     public function openCreateModal($eventId = null, $date = null, $hour = null)
     {
         try {
@@ -192,6 +213,10 @@ class CalendarAdmin extends Component
             $this->showEditModal     = false;
             $this->isSubmitting      = false;
             $this->eventParticipants = [];
+
+            // reset autocomplete
+            $this->searchParticipant = '';
+            $this->searchResults     = [];
 
             if ($date) {
                 $this->startDate = $date;
@@ -293,6 +318,10 @@ class CalendarAdmin extends Component
             $this->modalSlotDate   = $date;
             $this->modalSlotHour   = $hour;
 
+            // reset autocomplete
+            $this->searchParticipant = '';
+            $this->searchResults     = [];
+
             if ($eventId) {
                 $this->loadEventForEditing($eventId);
                 $this->selectedEvent        = Event::with('participants')->find($eventId);
@@ -310,53 +339,55 @@ class CalendarAdmin extends Component
         }
     }
 
-    public function openMoreEventsModal($date, $hour = null)
-    {
-        try {
-            $this->resetForm();
-            $this->resetErrorBag();
+public function openMoreEventsModal($date, $hour = null)
+{
+    try {
+        $this->resetForm();
+        $this->resetErrorBag();
 
-            $this->fromMore      = true;
-            $this->modalSlotDate = $date;
-            $this->modalSlotHour = $hour;
+        $this->fromMore      = true;
+        $this->modalSlotDate = $date;
+        $this->modalSlotHour = $hour;
 
-            if ($hour !== null) {
-                $cellDateTime = Carbon::parse($date)->setHour($hour);
-                $dayEvents = Event::whereDate('start_date', $date)->where('all_day', false)->get();
-
-                $this->eventsInCurrentModalSlot = $dayEvents->filter(function ($event) use ($cellDateTime) {
-                    $eventStart = Carbon::parse($event->start_date.' '.$event->start_time);
-                    $eventEnd   = Carbon::parse($event->end_date.' '.$event->end_time);
-                    $slotStart  = $cellDateTime->copy();
-                    $slotEnd    = $cellDateTime->copy()->addHour();
-                    return $eventStart->lt($slotEnd) && $eventEnd->gt($slotStart);
-                })->skip(3)->values();
-            } else {
-                $allEvents = Event::whereDate('start_date', $date)
-                    ->orderBy('all_day', 'desc')->orderBy('start_time')->get();
-
-                $this->eventsInCurrentModalSlot = $allEvents->skip(3)->values();
-            }
-
-            if ($this->eventsInCurrentModalSlot->count() > 0) {
-                $this->currentModalEventIndex = 0;
-                $firstEvent = $this->eventsInCurrentModalSlot->first();
-                $this->editingEventId = $firstEvent->id;
-                $this->populateFormFromEvent($firstEvent);
-
-                $this->showEditModal  = true;
-                $this->showCreateModal = false;
-            }
-        } catch (\Exception $e) {
-            \Log::error('Error opening more events modal: '.$e->getMessage());
-            session()->flash('error', 'Terjadi kesalahan saat membuka modal');
+        if ($hour !== null) {
+        } else {
+            // AMBIL SEMUA EVENT YANG OVERLAP DENGAN $date
+            $this->eventsInCurrentModalSlot = Event::with('participants')
+                ->whereDate('start_date', '<=', $date)
+                ->whereDate('end_date',   '>=', $date)
+                ->orderByDesc('all_day')
+                ->orderBy('start_time')
+                ->get()
+                ->skip(3)        
+                ->values();
         }
+
+        // Buka modal edit + posisikan ke event pertama (jika ada)
+        $this->showEditModal   = true;
+        $this->showCreateModal = false;
+
+        if ($this->eventsInCurrentModalSlot->isNotEmpty()) {
+            $this->currentModalEventIndex = 0;
+            $first = $this->eventsInCurrentModalSlot->first();
+            $this->editingEventId = $first->id;
+            $this->populateFormFromEvent($first);
+        }
+    } catch (\Exception $e) {
+        \Log::error('Error opening more events modal: '.$e->getMessage());
+        session()->flash('error', 'Terjadi kesalahan saat membuka daftar acara.');
     }
+}
+
 
     private function loadEventForEditing($eventId)
     {
         $event = Event::with('participants')->find($eventId);
-        if (!$event) { $this->closeEditModal(); return; }
+        if (!$event) {
+            $this->closeEditModal();
+            $this->deletingEventId   = null;
+            $this->showDeleteConfirm = false;
+            return;
+        }
 
         $this->populateFormFromEvent($event);
         $this->loadEventsInModalSlot($event->start_date, $event->start_time, $eventId);
@@ -384,7 +415,7 @@ class CalendarAdmin extends Component
 
     private function loadFirstEventInSlot()
     {
-        $firstEvent          = $this->eventsInCurrentModalSlot->first();
+        $firstEvent           = $this->eventsInCurrentModalSlot->first();
         $this->editingEventId = $firstEvent->id;
         $this->populateFormFromEvent($firstEvent);
     }
@@ -422,11 +453,14 @@ class CalendarAdmin extends Component
     {
         $this->title       = $event->title;
         $this->description = $event->description;
-        $this->startDate   = $event->start_date;
-        $this->startTime   = $event->start_time;
-        $this->endDate     = $event->end_date;
-        $this->endTime     = $event->end_time;
-        $this->allDay      = $event->all_day;
+
+        $this->startDate   = optional($event->start_date)->toDateString();
+        $this->endDate     = optional($event->end_date)->toDateString();
+
+        $this->startTime   = $event->start_time ? substr($event->start_time, 0, 5) : null;
+        $this->endTime     = $event->end_time   ? substr($event->end_time,   0, 5) : null;
+
+        $this->allDay      = (bool) $event->all_day;
         $this->color       = $event->color ?? '#3B82F6';
         $this->selectedParticipants = $event->participants->pluck('id')->toArray();
     }
@@ -467,7 +501,9 @@ class CalendarAdmin extends Component
     private function findCurrentEventIndex()
     {
         if ($this->editingEventId) {
-            $index = $this->eventsInCurrentModalSlot->search(fn($event) => $event->id == $this->editingEventId);
+            $index = $this->eventsInCurrentModalSlot->search(
+                fn($event) => $event->id == $this->editingEventId
+            );
             $this->currentModalEventIndex = $index !== false ? $index : 0;
         }
     }
@@ -489,13 +525,13 @@ class CalendarAdmin extends Component
 
     public function closeEditModal()
     {
-        $this->showEditModal          = false;
-        $this->editingEventId         = null;
-        $this->currentModalEventIndex = 0;
+        $this->showEditModal            = false;
+        $this->editingEventId           = null;
+        $this->currentModalEventIndex   = 0;
         $this->eventsInCurrentModalSlot = collect();
-        $this->modalSlotDate          = null;
-        $this->modalSlotHour          = null;
-        $this->selectedEvent          = null;
+        $this->modalSlotDate            = null;
+        $this->modalSlotHour            = null;
+        $this->selectedEvent            = null;
         $this->resetForm();
         $this->resetErrorBag();
     }
@@ -554,22 +590,41 @@ class CalendarAdmin extends Component
         $this->isSubmitting = false;
     }
 
+    /* ====== KONFIRMASI HAPUS ====== */
+    public function confirmDelete($eventId = null)
+    {
+        if ($eventId) {
+            $this->editingEventId = $eventId;
+        }
+
+        if (!$this->editingEventId) return;
+
+        $this->deletingEventId   = $this->editingEventId;
+        $this->showDeleteConfirm = true;
+    }
+
+    public function cancelDelete()
+    {
+        $this->showDeleteConfirm = false;
+        $this->deletingEventId   = null;
+    }
+
     public function deleteEvent()
     {
         try {
-            $event = Event::find($this->editingEventId);
+            $id = $this->deletingEventId ?: $this->editingEventId;
+            if (!$id) return;
+
+            $event = Event::find($id);
             if ($event) {
                 $event->delete();
-
-                $this->editingEventId         = null;
-                $this->currentModalEventIndex = 0;
-                $this->eventsInCurrentModalSlot = collect();
-                $this->selectedEvent          = null;
-
-                $this->closeEditModal();
-                session()->flash('success', 'Acara berhasil dihapus!');
-                $this->dispatch('refreshCalendar');
             }
+
+            $this->cancelDelete();
+            $this->closeEditModal();
+
+            session()->flash('success', 'Acara berhasil dihapus!');
+            $this->dispatch('refreshCalendar');
         } catch (\Exception $e) {
             \Log::error('Error deleting event: '.$e->getMessage());
             $this->addError('general', 'Terjadi kesalahan saat menghapus acara');
@@ -619,6 +674,8 @@ class CalendarAdmin extends Component
         $this->color                = '#3B82F6';
         $this->selectedParticipants = [];
         $this->newEventParticipant  = '';
+        $this->searchParticipant    = '';
+        $this->searchResults        = [];
     }
 
     /* ==================== STATISTICS ==================== */
@@ -678,6 +735,17 @@ class CalendarAdmin extends Component
         ];
     }
 
+    // ===== Helper untuk Day View (semua event aktif pada tanggal itu) =====
+    public function eventsOn(string $date)
+    {
+        return Event::with('participants')
+            ->whereDate('start_date', '<=', $date)
+            ->whereDate('end_date',   '>=', $date)
+            ->orderByDesc('all_day')
+            ->orderBy('start_time')
+            ->get();
+    }
+
     private function getRange(): array
     {
         if ($this->calendarView === 'day') {
@@ -714,24 +782,39 @@ class CalendarAdmin extends Component
         }
     }
 
-    /* ===== Participants data untuk sidebar (computed) ===== */
+    /* ===== Participants (sidebar computed) ===== */
     public function getParticipantsProperty()
     {
         return Participant::orderBy('name')->get();
     }
 
-    /* ===== Pencarian peserta (opsional) ===== */
+    /* ===== (opsional) pencarian sidebar ===== */
     public function updatedSearchParticipant()
     {
         $this->searchResults = Participant::where('name', 'like', '%'.$this->searchParticipant.'%')
             ->orderBy('name')
             ->take(5)
-            ->get();
+            ->get()
+            ->toArray();
+    }
+
+    // ====== Autocomplete untuk modal ======
+    public function searchCalendarParticipants(string $term): array
+    {
+        $term = trim($term);
+        if ($term === '') return [];
+
+        return Participant::where('name', 'like', "%{$term}%")
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name'])
+            ->map(fn($p) => ['id' => $p->id, 'name' => $p->name])
+            ->toArray();
     }
 
     public function getFirstSuggestion($query)
     {
-        $participant = Participant::where('name', 'like', $query.'%')->first();
+        $participant = Participant::where('name', 'like', $query.'%')->orderBy('name')->first();
         return $participant ? $participant->name : '';
     }
 
@@ -743,7 +826,6 @@ class CalendarAdmin extends Component
 
         Participant::firstOrCreate(['name' => ucfirst(strtolower($name))]);
         $this->participantName = '';
-        // tidak perlu reload manual; partial membaca $this->participants (computed)
     }
 
     public function editParticipant($participantId)
@@ -877,13 +959,19 @@ class CalendarAdmin extends Component
         $this->reset(['searchParticipant', 'searchResults']);
     }
 
-    public function render()
-    {
-        return view('livewire.calendar-admin', [
-            'stats'        => $this->stats,
-            'calendarData' => $this->calendarData,
-            'periodLabel'  => $this->calendarData['periodLabel'],
-            'participants' => $this->participants, // computed getParticipantsProperty()
-        ]);
-    }
+public function render()
+{
+    $eventsForDay = $this->calendarView === 'day'
+        ? $this->eventsOn($this->currentDate)
+        : collect();
+
+    return view('livewire.calendar-admin', [
+        'stats'        => $this->stats,
+        'calendarData' => $this->calendarData,
+        'periodLabel'  => $this->calendarData['periodLabel'],
+        'participants' => $this->participants,
+        'eventsForDay' => $eventsForDay, // untuk Day view
+    ])->title('Calendar | Agenda App');
+}
+
 }

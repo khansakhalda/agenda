@@ -1,4 +1,3 @@
-{{-- resources/views/livewire/settings/task-card.blade.php --}}
 <div class="flex items-center justify-between group p-4 border rounded-xl bg-gray-50 hover:bg-white transition-all duration-300 shadow-sm hover:shadow-md">
 
   {{-- kiri: checkbox + konten --}}
@@ -61,9 +60,11 @@
 
         {{-- ===== PARTICIPANTS (chips + inline add + autocomplete) ===== --}}
         @php
-          /** @var \App\Models\Event|null $__event */
-          $__event = \App\Models\Event::with('participants')->find($task->id);
-          $__participants = $__event?->participants ?? collect();
+          /**
+           * Disarankan backend menyediakan relasi $task->participants (sumber: tabel partisipan kalender).
+           * Baris di bawah ini fallback: kalau tidak ada relasi, tetap kosong.
+           */
+          $__participants = $task->participants ?? collect();
         @endphp
 
         <div
@@ -90,7 +91,7 @@
             <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs flex items-center">
               {{ $p->name }}
               <button type="button" wire:click="detachParticipant({{ $task->id }}, {{ $p->id }})"
-                      class="ml-1 text-red-500 hover:text-red-700" title="Hapus dari acara">&times;</button>
+                      class="ml-1 text-red-500 hover:text-red-700" title="Hapus dari tugas">&times;</button>
             </span>
           @endforeach
 
@@ -149,7 +150,7 @@
         </svg>
       </button>
 
-      {{-- Delete -> konfirmasi (pindah ke Selesai / arsip) --}}
+      {{-- Delete -> konfirmasi --}}
       <button type="button"
               @click="$dispatch('confirm',{
                 title:'Pindahkan ke Selesai?',

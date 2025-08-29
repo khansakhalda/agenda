@@ -8,12 +8,10 @@ use Illuminate\Support\Collection;
 
 class UserBoard extends Component
 {
-    // batches
-    public array $previousEvents = [];
-    public array $currentEvents  = [];
-    public array $nextEvents     = [];
+    public array $currentEvents = [];   // sekarang berlangsung
+    public array $upcomingToday = [];   // sisa acara hari ini (start >= now)
+    public array $nextEvents    = [];   
 
-    // window query (opsional)
     public int $windowPastDays = 7;
     public int $windowNextDays = 30;
 
@@ -22,7 +20,7 @@ class UserBoard extends Component
         $now = now();
 
         return Event::query()
-            ->with(['participants:id,name']) // <<-- eager load peserta (anti N+1)
+            ->with(['participants:id,name'])
             ->where('is_completed', false)
             ->when($this->windowPastDays > 0, fn ($q) =>
                 $q->whereDate('end_date', '>=', $now->clone()->subDays($this->windowPastDays)->toDateString())
@@ -31,10 +29,20 @@ class UserBoard extends Component
                 $q->whereDate('start_date', '<=', $now->clone()->addDays($this->windowNextDays)->toDateString())
             )
             ->get()
-            ->filter(function ($e) {
-                return $e->start_date_time && $e->end_date_time
-                    && $e->end_date_time->gte($e->start_date_time);
-            });
+            ->filter(fn ($e) =>
+                $e->start_date_time && $e->end_date_time && $e->end_date_time->gte($e->start_date_time)
+            );
+    }
+
+    private function fmt($date): ?string
+    {
+        if (!$date) return null;
+        $bulan = [1=>'Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+        $d = (int) $date->format('d');
+        $m = (int) $date->format('n');
+        $y = $date->format('Y');
+        $hm= $date->format('H:i');
+        return sprintf('%02d %s %s %s', $d, $bulan[$m], $y, $hm);
     }
 
     protected function mapForView(Collection $events): array
@@ -44,14 +52,11 @@ class UserBoard extends Component
                 'id'          => $e->id,
                 'title'       => $e->title,
                 'description' => $e->description ?: null,
-                // format agar bulan singkatan EN (Jan, Feb, dst.)
-                'start'       => $e->start_date_time?->format('d M Y H:i'),
-                'end'         => $e->end_date_time?->format('d M Y H:i'),
+                'start'       => $this->fmt($e->start_date_time),
+                'end'         => $this->fmt($e->end_date_time),
                 'location'    => $e->location ?? null,
                 'raw_start'   => $e->start_date_time,
                 'raw_end'     => $e->end_date_time,
-
-                // === peserta untuk display ===
                 'participants'       => $e->participants?->pluck('name')->values()->all() ?? [],
                 'participants_count' => $e->participants?->count() ?? 0,
             ];
@@ -63,37 +68,33 @@ class UserBoard extends Component
         $now    = now();
         $events = $this->fetchActiveEvents();
 
-        // CURRENT
+        // ===== CURRENT: yang sedang berlangsung (past disaring)
         $current = $events->filter(
             fn ($e) => $e->start_date_time->lte($now) && $e->end_date_time->gt($now)
         )->sortBy('start_date_time');
         $this->currentEvents = $this->mapForView($current);
 
-        // NEXT batch (paling awal setelah sekarang)
-        $firstStart = $events
-            ->filter(fn ($e) => $e->start_date_time->gt($now))
-            ->min('start_date_time');
+$upcoming = $events->filter(function ($e) use ($now) {
+        return $e->start_date_time->isSameDay($now)
+            && $e->start_date_time->gte($now); // belum mulai
+    })
+    ->sortBy(fn ($e) => [
+        $e->end_date_time->timestamp,
+        $e->start_date_time->timestamp,
+        mb_strtolower($e->title ?? ''),
+    ]);
 
+$this->upcomingToday = $this->mapForView($upcoming);
+
+
+        // (opsional) NEXT batch paling dekat setelah sekarang (tidak dipakai UI utama)
+        $firstStart = $events->filter(fn ($e) => $e->start_date_time->gt($now))->min('start_date_time');
         $nextBatch = collect();
         if ($firstStart) {
-            $nextBatch = $events->filter(
-                fn ($e) => $e->start_date_time->equalTo($firstStart)
-            )->sortBy('title');
+            $nextBatch = $events->filter(fn ($e) => $e->start_date_time->equalTo($firstStart))
+                                ->sortBy('title');
         }
         $this->nextEvents = $this->mapForView($nextBatch);
-
-        // PREVIOUS batch (paling akhir sebelum/tepat sekarang)
-        $lastEnd = $events
-            ->filter(fn ($e) => $e->end_date_time->lte($now))
-            ->max('end_date_time');
-
-        $prevBatch = collect();
-        if ($lastEnd) {
-            $prevBatch = $events->filter(
-                fn ($e) => $e->end_date_time->equalTo($lastEnd)
-            )->sortBy('title');
-        }
-        $this->previousEvents = $this->mapForView($prevBatch);
     }
 
     public function mount(): void
@@ -103,10 +104,8 @@ class UserBoard extends Component
 
     public function render()
     {
-        // auto-roll via wire:poll di Blade
         $this->loadData();
 
-        return view('livewire.display.user-board')
-            ->title('Display Agenda');
+        return view('livewire.display.user-board')->title('Display | Agenda App');
     }
 }

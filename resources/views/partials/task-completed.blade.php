@@ -1,4 +1,3 @@
-{{-- resources/views/partials/task-completed.blade.php --}}
 <div class="mt-6" x-data="{ openCompleted: true }">
   <div class="flex items-center justify-between mb-3">
     <button type="button"
@@ -36,17 +35,11 @@
        x-transition:leave-start="opacity-100 translate-y-0"
        x-transition:leave-end="opacity-0 -translate-y-1"
        class="space-y-3">
-    @forelse($completedTasks as $c)
-      @php
-        /** @var \App\Models\Event|null $__event */
-        $__event = \App\Models\Event::with('participants')->find($c->id);
-        $__participants = $__event?->participants ?? collect();
-      @endphp
 
+    @forelse($completedTasks as $c)
       <div class="flex items-center justify-between group p-4 border rounded-xl bg-gray-100 transition shadow-sm opacity-80 hover:shadow-md">
-        {{-- Kiri: Checkbox + konten --}}
+        {{-- Kiri: tombol restore + konten --}}
         <div class="flex items-start w-0 flex-1 space-x-3">
-          {{-- Restore --}}
           <button type="button" wire:click="restoreTask({{ $c->id }})"
                   class="relative cursor-pointer flex items-center flex-shrink-0 mt-0.5">
             <div class="w-6 h-6 rounded-full border-2 border-gray-300 bg-white flex items-center justify-center shadow-sm">
@@ -69,14 +62,14 @@
 
             {{-- Partisipan --}}
             <div class="flex flex-wrap gap-1 mt-2">
-              @foreach($__participants as $p)
+              @foreach(($c->participants ?? collect()) as $p)
                 <span class="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-xs">{{ $p->name }}</span>
               @endforeach
             </div>
           </div>
         </div>
 
-        {{-- Delete permanen (konfirmasi) --}}
+        {{-- Hapus permanen (konfirmasi) --}}
         <div class="opacity-0 group-hover:opacity-100 transition-all duration-200">
           <button type="button"
                   @click="$dispatch('confirm',{
