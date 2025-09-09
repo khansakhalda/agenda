@@ -43,14 +43,14 @@ class Event extends Model
      * Casting kolom → tipe PHP/Carbon.
      */
     protected $casts = [
-        'start_date'       => 'date',
-        'end_date'         => 'date',
-        'start_date_time'  => 'datetime',
-        'end_date_time'    => 'datetime',
-        'all_day'          => 'boolean',
-        'is_starred'       => 'boolean',
-        'is_completed'     => 'boolean',
-        'completed_at'     => 'datetime',
+        'start_date' => 'date',
+        'end_date' => 'date',
+        'start_date_time' => 'datetime',
+        'end_date_time' => 'datetime',
+        'all_day' => 'boolean',
+        'is_starred' => 'boolean',
+        'is_completed' => 'boolean',
+        'completed_at' => 'datetime',
     ];
 
     /**
@@ -69,8 +69,10 @@ class Event extends Model
      */
     public function getStartDateTimeAttribute($value)
     {
-        if ($value instanceof Carbon) return $value;
-        if (!is_null($value))         return Carbon::parse($value);
+        if ($value instanceof Carbon)
+            return $value;
+        if (!is_null($value))
+            return Carbon::parse($value);
 
         if ($this->start_date) {
             $t = $this->start_time ?: '00:00:00';
@@ -82,8 +84,10 @@ class Event extends Model
 
     public function getEndDateTimeAttribute($value)
     {
-        if ($value instanceof Carbon) return $value;
-        if (!is_null($value))         return Carbon::parse($value);
+        if ($value instanceof Carbon)
+            return $value;
+        if (!is_null($value))
+            return Carbon::parse($value);
 
         if ($this->end_date) {
             $t = $this->end_time ?: '23:59:59';
@@ -143,7 +147,7 @@ class Event extends Model
             // Konsistensi all day
             if ($event->all_day) {
                 $event->start_time = '00:00:00';
-                $event->end_time   = '23:59:59';
+                $event->end_time = '23:59:59';
             }
         });
     }

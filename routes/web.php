@@ -15,16 +15,11 @@ Route::get('/user', UserBoard::class)->name('display.user');
 Route::redirect('/', '/login');
 
 // (opsional) dashboard
-Route::view('dashboard', 'dashboard')
-    ->middleware(['auth', 'verified'])
-    ->name('dashboard');
+Route::redirect('/dashboard', '/user')->middleware(['auth']);
 
 Route::middleware(['auth'])->group(function () {
     // Halaman utama setelah login
     Route::get('/settings/calendar', CalendarAdmin::class)->name('calendar.admin');
-
-    // (opsional)
-    Route::get('/settings/calendar-user', CalendarUser::class)->name('calendar.user');
 
     // Tasks (path lama tetap ada)
     Route::get('/settings/tasks', Tasks::class)->name('settings.tasks');

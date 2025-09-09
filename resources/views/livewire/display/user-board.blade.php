@@ -36,7 +36,7 @@
     <section
       x-data="{
         idx: 0, count: {{ $cCount }}, timer: null,
-        start(){ if(this.count>1){ this.timer=setInterval(()=>{ this.idx=(this.idx+1)%this.count }, 2000) } },
+        start(){ if(this.count>1){ this.timer=setInterval(()=>{ this.idx=(this.idx+1)%this.count }, 5000) } },
         stop(){ if(this.timer){ clearInterval(this.timer); this.timer=null } },
         go(i){ this.idx=i; this.stop(); this.start(); }
       }"

@@ -15,6 +15,8 @@ return new class extends Migration {
             $table->boolean('is_completed')->default(false);
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
+            $table->date('due_date')->nullable();
+
         });
     }
 

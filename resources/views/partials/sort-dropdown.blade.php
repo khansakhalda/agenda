@@ -20,9 +20,10 @@
 
     @php
       $sortOptions = [
-        'manual'  => 'Urutan saya',
+        'manual'  => 'Urutan Terbaru',
         'starred' => 'Berbintang terbaru',
         'title'   => 'Judul',
+        'due_date' => 'Tenggat waktu',
       ];
     @endphp
 

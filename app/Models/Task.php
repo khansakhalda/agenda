@@ -15,12 +15,14 @@ class Task extends Model
         'is_starred',
         'is_completed',
         'completed_at',
+        'due_date',
     ];
 
     protected $casts = [
-        'is_starred'   => 'boolean',
+        'is_starred' => 'boolean',
         'is_completed' => 'boolean',
         'completed_at' => 'datetime',
+        'due_date' => 'datetime',
     ];
 
     public function participants()
