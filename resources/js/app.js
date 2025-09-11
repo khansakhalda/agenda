@@ -1,5 +1,4 @@
 // Add this to your app.js or include as separate file
-
 document.addEventListener("alpine:init", () => {
     Alpine.data("notifications", () => ({
         notifications: [],

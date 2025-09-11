@@ -8,18 +8,17 @@ use App\Livewire\CalendarUser;
 use App\Livewire\Settings\Tasks;
 use App\Livewire\Display\UserBoard;
 
-// --- jika bebas akses (tanpa login) ---
-Route::get('/user', UserBoard::class)->name('display.user');
-
 // Root -> login
 Route::redirect('/', '/login');
 
 // (opsional) dashboard
-Route::redirect('/dashboard', '/user')->middleware(['auth']);
+Route::redirect('/dashboard', '/settings/calendar')->middleware(['auth']);
 
 Route::middleware(['auth'])->group(function () {
     // Halaman utama setelah login
     Route::get('/settings/calendar', CalendarAdmin::class)->name('calendar.admin');
+
+    Route::get('/user', UserBoard::class)->name('display.user');
 
     // Tasks (path lama tetap ada)
     Route::get('/settings/tasks', Tasks::class)->name('settings.tasks');

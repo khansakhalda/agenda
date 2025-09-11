@@ -12,10 +12,10 @@ class Login extends Component
 {
     public string $email = '';
     public string $password = '';
-    public bool  $remember = false;
+    public bool $remember = false;
 
     protected array $rules = [
-        'email'    => 'required|string|email',
+        'email' => 'required|string|email',
         'password' => 'required|string',
     ];
 
@@ -24,10 +24,12 @@ class Login extends Component
         $this->validate();
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt(
-            ['email' => $this->email, 'password' => $this->password],
-            $this->remember
-        )) {
+        if (
+            !Auth::attempt(
+                ['email' => $this->email, 'password' => $this->password],
+                $this->remember
+            )
+        ) {
             RateLimiter::hit($this->throttleKey());
 
             // error pada form + popup gagal
@@ -42,21 +44,22 @@ class Login extends Component
 
         // flash untuk halaman tujuan
         session()->flash('toast', [
-            'type'  => 'success',
+            'type' => 'success',
             'title' => 'Berhasil Masuk',
-            'text'  => 'Selamat datang kembali!',
+            'text' => 'Selamat datang kembali!',
         ]);
 
         // full reload supaya flash pasti terbaca
         $this->redirectIntended(
             default: route('calendar.admin', absolute: false),
-            navigate: false   
+            navigate: false
         );
     }
 
     protected function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), 5)) return;
+        if (!RateLimiter::tooManyAttempts($this->throttleKey(), 5))
+            return;
 
         event(new Lockout(request()));
         $seconds = RateLimiter::availableIn($this->throttleKey());
@@ -71,7 +74,7 @@ class Login extends Component
 
     protected function throttleKey(): string
     {
-        return Str::transliterate(Str::lower($this->email).'|'.request()->ip());
+        return Str::transliterate(Str::lower($this->email) . '|' . request()->ip());
     }
 
     public function render()

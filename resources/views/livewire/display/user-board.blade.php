@@ -1,5 +1,5 @@
 {{-- Display Screen: auto refresh tiap 15 detik --}}
-<div class="h-screen w-screen overflow-hidden relative" wire:poll.15s>
+<div class="h-screen w-screen overflow-hidden relative" wire:poll.3s>
 
   {{-- LOGO (top-left) --}}
   <div class="absolute top-3 left-5 z-20">
@@ -71,10 +71,12 @@
                 @if(($ev['participants_count'] ?? 0) > 0)
                   <div class="mt-4 flex justify-center">
                     @include('partials.participants-facepile', [
-                      'list'  => $ev['participants'] ?? [],
-                      'max'   => 12,
-                      'label' => 'Partisipan'
-                    ])
+  'list'  => $ev['participants'] ?? [],
+  'max'   => 12,
+  'label' => 'Partisipan',
+  'class' => 'text-base md:text-2xl text-slate-700 font-semibold'
+])
+
                   </div>
                 @endif
               </div>
@@ -121,7 +123,14 @@
                     </div>
                     @if(($ev['participants_count'] ?? 0) > 0)
                       <div class="mt-1">
-                        @include('partials.participants-facepile', ['list' => $ev['participants'], 'max' => 8, 'label' => 'Partisipan'])
+                        @include('partials.participants-facepile', [
+  'list'  => $ev['participants'],
+  'max'   => 8,
+  'label' => 'Partisipan',
+  'class' => 'text-xs md:text-sm text-slate-700 font-medium'
+])
+
+
                       </div>
                     @endif
                   </div>
@@ -139,7 +148,14 @@
                       </div>
                       @if(($ev['participants_count'] ?? 0) > 0)
                         <div class="mt-1">
-                          @include('partials.participants-facepile', ['list' => $ev['participants'], 'max' => 8, 'label' => 'Partisipan'])
+                          @include('partials.participants-facepile', [
+  'list'  => $ev['participants'],
+  'max'   => 8,
+  'label' => 'Partisipan',
+  'class' => 'text-xs md:text-sm text-slate-700 font-medium'
+])
+
+
                         </div>
                       @endif
                     </div>

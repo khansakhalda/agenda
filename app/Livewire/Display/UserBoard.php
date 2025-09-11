@@ -3,6 +3,7 @@
 namespace App\Livewire\Display;
 
 use Livewire\Component;
+use Livewire\Attributes\On;
 use App\Models\Event;
 use Illuminate\Support\Collection;
 
@@ -12,8 +13,23 @@ class UserBoard extends Component
     public array $upcomingToday = [];   // sisa acara hari ini (start >= now)
     public array $nextEvents = [];
 
+    // Add these properties for better state management
+    public int $currentCount = 0;
+    public int $upcomingCount = 0;
+
     public int $windowPastDays = 7;
     public int $windowNextDays = 30;
+
+    // Listen for events from calendar operations
+    #[On('event-created')]
+    #[On('event-updated')]
+    #[On('event-deleted')]
+    #[On('refresh-userboard')]
+    public function refreshData()
+    {
+        $this->loadData();
+        $this->dispatch('userboard-refreshed');
+    }
 
     protected function fetchActiveEvents(): Collection
     {
@@ -32,6 +48,7 @@ class UserBoard extends Component
                 fn($q) =>
                 $q->whereDate('start_date', '<=', $now->clone()->addDays($this->windowNextDays)->toDateString())
             )
+            ->orderBy('start_date_time', 'asc') // Important: consistent ordering
             ->get()
             ->filter(
                 fn($e) =>
@@ -74,16 +91,34 @@ class UserBoard extends Component
         $now = now();
         $events = $this->fetchActiveEvents();
 
-        // ===== CURRENT: yang sedang berlangsung (past disaring)
-        $current = $events->filter(
-            fn($e) => $e->start_date_time->lte($now) && $e->end_date_time->gt($now)
-        )->sortBy('start_date_time');
+        /**
+         * ======================
+         *  CURRENT EVENTS
+         *  (sedang berlangsung)
+         * ======================
+         */
+        $current = $events
+            ->filter(
+                fn($e) =>
+                $e->start_date_time->lte($now) &&
+                $e->end_date_time->gt($now)
+            )
+            ->sortBy('start_date_time');
+
         $this->currentEvents = $this->mapForView($current);
 
-        $upcoming = $events->filter(function ($e) use ($now) {
-            return $e->start_date_time->isSameDay($now)
-                && $e->start_date_time->gte($now); // belum mulai
-        })
+        /**
+         * ======================
+         *  UPCOMING TODAY
+         *  (acara hari ini yg belum mulai)
+         * ======================
+         */
+        $upcoming = $events
+            ->filter(
+                fn($e) =>
+                $e->start_date_time->isSameDay($now) &&
+                $e->start_date_time->gte($now) // belum mulai
+            )
             ->sortBy(fn($e) => [
                 $e->end_date_time->timestamp,
                 $e->start_date_time->timestamp,
@@ -92,16 +127,26 @@ class UserBoard extends Component
 
         $this->upcomingToday = $this->mapForView($upcoming);
 
+        /**
+         * ======================
+         *  NEXT BATCH
+         *  (batch paling dekat setelah sekarang)
+         * ======================
+         */
+        $firstStart = $events
+            ->filter(fn($e) => $e->start_date_time->gt($now))
+            ->min('start_date_time');
 
-        // (opsional) NEXT batch paling dekat setelah sekarang (tidak dipakai UI utama)
-        $firstStart = $events->filter(fn($e) => $e->start_date_time->gt($now))->min('start_date_time');
         $nextBatch = collect();
         if ($firstStart) {
-            $nextBatch = $events->filter(fn($e) => $e->start_date_time->equalTo($firstStart))
+            $nextBatch = $events
+                ->filter(fn($e) => $e->start_date_time->equalTo($firstStart))
                 ->sortBy('title');
         }
+
         $this->nextEvents = $this->mapForView($nextBatch);
     }
+
 
     public function mount(): void
     {
@@ -110,8 +155,13 @@ class UserBoard extends Component
 
     public function render()
     {
-        $this->loadData();
-
+        // Only reload if necessary (polling will handle auto-refresh)
         return view('livewire.display.user-board')->title('Display | Agenda App');
+    }
+
+    // Method to force refresh from external components
+    public function forceRefresh()
+    {
+        $this->loadData();
     }
 }
